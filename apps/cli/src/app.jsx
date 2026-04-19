@@ -10,6 +10,7 @@ import {fetchSessionCost, runResearchStream} from './api/client.js';
 import {replayFromSseJsonl} from './api/replay.js';
 import {BloombergWorkbench} from './bloomberg-workbench.jsx';
 import {PromptComposer} from './prompt-composer.jsx';
+import {notifyUserActivity} from './right-blotter.jsx';
 import {extractTickerHint} from './ticker-guess.js';
 import {prepareResearchMessage} from './ticker-context.js';
 import {
@@ -119,6 +120,11 @@ export function App({
   }, [status]);
 
   useInput((input, key) => {
+    // Freeze the MarketPulse animation briefly after every keypress so its
+    // frequent re-renders don't interleave with the terminal's scroll/paint
+    // and produce visible flicker.
+    notifyUserActivity();
+
     if (isBusy) {
       return;
     }

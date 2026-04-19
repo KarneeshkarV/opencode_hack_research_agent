@@ -5,6 +5,25 @@ import Gradient from 'ink-gradient';
 import { AGENT_ACCENT_GRADIENT, COLOR } from './theme.js';
 /* All hex colors below come from COLOR.* — Catppuccin Mocha palette */
 
+/**
+ * Lightweight "user is interacting" bus.
+ *
+ * Writing into the terminal while the user is scrolling causes visible flicker
+ * because the animation's frequent re-renders interleave with scroll redraws.
+ * We freeze the MarketPulse animation briefly after every keypress so the
+ * terminal gets quiet frames to complete the scroll paint cleanly.
+ *
+ * `notifyUserActivity()` is called from the top-level useInput handler in
+ * app.jsx. `MarketPulse` below checks this timestamp each tick and skips its
+ * setState (i.e. no re-render) while within QUIET_AFTER_INPUT_MS of the last
+ * keypress.
+ */
+const ACTIVITY = { lastKeyTs: 0 };
+export const QUIET_AFTER_INPUT_MS = 400;
+export function notifyUserActivity() {
+  ACTIVITY.lastKeyTs = Date.now();
+}
+
 function fmt$(n, currency = 'USD') {
   try {
     return new Intl.NumberFormat('en-US', {
@@ -121,12 +140,18 @@ function CostCard({ costSummary }) {
  *   • Each column has a pastel rainbow color; the top of each bar is
  *     rendered bold for a soft glow.
  *
- * Pure-CPU, no deps — ink re-renders on a 100 ms timer via setState.
+ * Pure-CPU, no deps — ink re-renders on a TICK_MS timer via setState.
+ *
+ * Anti-flicker: the animation freezes for QUIET_AFTER_INPUT_MS after any
+ * keypress (signalled via `notifyUserActivity()` from app.jsx). Skipping the
+ * setState during that window means zero re-renders while the user is
+ * scrolling, which lets the terminal complete its scroll redraw cleanly
+ * instead of fighting the animation's 6–10 fps repaints.
  */
 const BAR_PARTIAL = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█']; // 8 partial fills
-const BAR_COUNT = 22; // columns (width of the chart)
-const BAR_ROWS = 12; // vertical rows — each row = 8 sub-levels, so total height = 96 sub-units
-const TICK_MS = 100;
+const BAR_COUNT = 18; // columns (width of the chart)
+const BAR_ROWS = 6; // vertical rows — each row = 8 sub-levels, so total height = 48 sub-units
+const TICK_MS = 160;
 
 /** Pastel rainbow across the bars (Catppuccin-ish). Loops if BAR_COUNT > length. */
 const BAR_PALETTE = [
@@ -150,13 +175,17 @@ const BAR_PALETTE = [
   COLOR.sectionHead,
 ];
 
-function MarketPulse() {
+const MarketPulse = React.memo(function MarketPulse() {
   // Single monotonic frame counter drives every sine wave so the whole
   // widget moves in harmony rather than randomly.
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
     const id = setInterval(() => {
+      // Skip the tick entirely (no setState → no re-render) while the user
+      // has recently interacted with the TTY. This prevents flicker when
+      // scrolling chat with j/k or typing in the prompt.
+      if (Date.now() - ACTIVITY.lastKeyTs < QUIET_AFTER_INPUT_MS) return;
       setFrame((f) => (f + 1) % 1_000_000);
     }, TICK_MS);
     return () => clearInterval(id);
@@ -214,11 +243,14 @@ function MarketPulse() {
       flexDirection="column"
       alignItems="center"
       width="100%"
+      height={BAR_ROWS}
+      flexShrink={0}
+      overflow="hidden"
     >
       {rows}
     </Box>
   );
-}
+});
 
 export function RightBlotter({ phase, symbol, costSummary }) {
   if (!symbol) {
@@ -276,9 +308,16 @@ export function RightBlotter({ phase, symbol, costSummary }) {
   const retColor = phase.ret >= 0 ? COLOR.up : COLOR.down;
 
   return (
-    <Box flexDirection="column" paddingX={1} paddingY={0}>
+    <Box
+      flexDirection="column"
+      paddingX={1}
+      paddingY={0}
+      width="100%"
+      height="100%"
+      overflow="hidden"
+    >
       {/* ── Header ── */}
-      <Box flexDirection="row" alignItems="center" justifyContent="space-between">
+      <Box flexDirection="row" alignItems="center" justifyContent="space-between" flexShrink={0}>
         <Box flexDirection="row" alignItems="center">
           <Text color={COLOR.divider} bold>▌</Text>
           <Text bold>
