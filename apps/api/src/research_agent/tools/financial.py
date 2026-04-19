@@ -1,5 +1,8 @@
+import json
+from typing import Any
+
+from agno.tools import Toolkit
 from agno.tools.calculator import CalculatorTools
-from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.financial_datasets import FinancialDatasetsTools
 from agno.tools.yfinance import YFinanceTools
 
@@ -8,20 +11,35 @@ from research_agent.tools.technical import get_technical_summary
 from research_agent.tools.timeout import call_with_timeout
 
 
-class TimeoutDuckDuckGoTools(DuckDuckGoTools):
+class TimeoutExaSearchTools(Toolkit):
+    def __init__(
+        self,
+        fixed_max_results: int | None = None,
+        text: bool = True,
+        text_length_limit: int = 1000,
+        **kwargs: Any,
+    ) -> None:
+        settings = get_settings()
+        self.api_key = settings.exa_api_key
+        self.fixed_max_results = fixed_max_results
+        self.text = text
+        self.text_length_limit = text_length_limit
+
+        super().__init__(name="exa_search", tools=[self.web_search, self.search_news], **kwargs)
+
     def web_search(self, query: str, max_results: int = 5) -> str:
         """Search the web for a query."""
         actual_max_results = self.fixed_max_results or max_results
         return call_with_timeout(
             "web_search",
             get_settings().external_tool_timeout_seconds,
-            _duckduckgo_call,
-            "web_search",
+            _exa_search_call,
             query,
             actual_max_results,
-            self.timeout or 10,
-            self.region,
-            self.backend,
+            self.api_key,
+            None,
+            self.text,
+            self.text_length_limit,
         )
 
     def search_news(self, query: str, max_results: int = 5) -> str:
@@ -30,13 +48,13 @@ class TimeoutDuckDuckGoTools(DuckDuckGoTools):
         return call_with_timeout(
             "search_news",
             get_settings().external_tool_timeout_seconds,
-            _duckduckgo_call,
-            "search_news",
+            _exa_search_call,
             query,
             actual_max_results,
-            self.timeout or 10,
-            self.region,
-            self.backend,
+            self.api_key,
+            "news",
+            self.text,
+            self.text_length_limit,
         )
 
 
@@ -71,10 +89,6 @@ class TimeoutYFinanceTools(YFinanceTools):
         """Get analyst recommendations for a public ticker symbol."""
         return self._call_yfinance("get_analyst_recommendations", symbol)
 
-    def get_company_news(self, symbol: str, num_stories: int = 3) -> str:
-        """Get company news for a public ticker symbol."""
-        return self._call_yfinance("get_company_news", symbol, num_stories)
-
     def get_technical_indicators(self, symbol: str, period: str = "3mo") -> str:
         """Get technical indicators for a public ticker symbol."""
         return self._call_yfinance("get_technical_indicators", symbol, period)
@@ -89,8 +103,8 @@ class TimeoutYFinanceTools(YFinanceTools):
         )
 
 
-def web_tools() -> TimeoutDuckDuckGoTools:
-    return TimeoutDuckDuckGoTools(fixed_max_results=6, timeout=10, region="us-en")
+def web_tools() -> TimeoutExaSearchTools:
+    return TimeoutExaSearchTools(fixed_max_results=6)
 
 
 def _financial_dataset_tools() -> list[FinancialDatasetsTools]:
@@ -105,7 +119,6 @@ def market_research_tools() -> list:
         TimeoutYFinanceTools(
             enable_stock_price=True,
             enable_company_info=True,
-            enable_company_news=True,
             enable_analyst_recommendations=True,
             enable_historical_prices=True,
         ),
@@ -155,21 +168,53 @@ def term_sheet_tools() -> list:
     return [CalculatorTools(), web_tools()]
 
 
-def _duckduckgo_call(
-    method_name: str,
+def _exa_search_call(
     query: str,
     max_results: int,
-    request_timeout_seconds: int,
-    region: str | None,
-    backend: str,
+    api_key: str | None,
+    category: str | None,
+    text: bool,
+    text_length_limit: int,
 ) -> str:
-    tools = DuckDuckGoTools(
-        fixed_max_results=max_results,
-        timeout=request_timeout_seconds,
-        region=region,
-        backend=backend,
-    )
-    return getattr(tools, method_name)(query=query, max_results=max_results)
+    if not api_key:
+        return "Error running exa_search: EXA_API_KEY is not configured"
+
+    try:
+        from exa_py import Exa
+    except ImportError:
+        return "Error running exa_search: exa_py is not installed"
+
+    exa = Exa(api_key)
+    search_kwargs = {
+        "contents": {"text": {"max_characters": text_length_limit}} if text else False,
+        "num_results": max_results,
+    }
+    if category:
+        search_kwargs["category"] = category
+
+    exa_results = exa.search(query, **search_kwargs)
+    return _parse_exa_results(exa_results, text_length_limit)
+
+
+def _parse_exa_results(exa_results: Any, text_length_limit: int) -> str:
+    parsed_results = []
+    for result in getattr(exa_results, "results", []):
+        result_dict = {}
+        for key in ("url", "title", "author", "published_date", "summary", "text"):
+            value = _result_value(result, key)
+            if not value:
+                continue
+            if key == "text" and text_length_limit:
+                value = value[:text_length_limit]
+            result_dict[key] = value
+        parsed_results.append(result_dict)
+    return json.dumps(parsed_results, indent=2, ensure_ascii=False)
+
+
+def _result_value(result: Any, key: str) -> Any:
+    if isinstance(result, dict):
+        return result.get(key)
+    return getattr(result, key, None)
 
 
 def _yfinance_call(method_name: str, *args) -> str:

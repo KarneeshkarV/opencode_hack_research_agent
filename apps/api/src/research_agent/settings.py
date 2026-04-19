@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     kite_api_secret: str | None = None
     kite_access_token: str | None = None
     kite_dry_run: bool = True
+    exa_api_key: str | None = None
     openai_api_key: str | None = None
     external_tool_timeout_seconds: int = 25
 
