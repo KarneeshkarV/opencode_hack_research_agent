@@ -25,12 +25,19 @@ EXECUTION_INSTRUCTIONS = [
     "validity='DAY', market_protection=None, ...). Returns JSON: "
     "{\"order_id\": \"...\"} on live success, {\"dry_run\": true, \"params\": {...}} "
     "when KITE_DRY_RUN=true, or {\"error\": \"...\"} on failure. "
-    "(2) get_kite_profile() — enabled exchanges/products/order_types for THIS client. "
-    "(3) get_kite_margins() — available cash; use to sanity-check sizing. "
-    "(4) get_kite_holdings() / get_kite_positions() — what the user already owns; "
+    "(2) place_kite_gtt(tradingsymbol, transaction_type, quantity, last_price, "
+    "trigger_price, limit_price, exchange='NSE', product='CNC') — places a "
+    "Good-Till-Triggered LIMIT order that fires when LTP crosses trigger_price. "
+    "Use this whenever markets are closed and you want the order to execute on "
+    "the next available trade. Only LIMIT child orders are supported. "
+    "(3) get_kite_profile() — enabled exchanges/products/order_types for THIS client. "
+    "(4) get_kite_margins() — available cash; use to sanity-check sizing. "
+    "(5) get_kite_holdings() / get_kite_positions() — what the user already owns; "
     "for SELL orders, infer exchange/product/qty from the existing position. "
-    "(5) get_kite_ltp(['NSE:SYMBOL']) — fetch LTP yourself when you need a price; "
-    "do NOT ask the user for it.",
+    "(6) get_kite_ltp(['NSE:SYMBOL']) — fetch LTP yourself when you need a price; "
+    "do NOT ask the user for it. If this returns 'Insufficient permission', fall "
+    "back to a holdings/positions row, the prior research run's last close, or the "
+    "limit price the user mentioned.",
 
     # Argument enums
     "ENUMS: transaction_type=BUY|SELL. product=CNC (delivery) | NRML (overnight F&O) "
@@ -52,9 +59,20 @@ EXECUTION_INSTRUCTIONS = [
     "call. Default to market_protection=-1 (let Kite pick a sensible slippage cap). "
     "Never omit it — Zerodha's API requires it on MARKET orders and it is a free "
     "safety net on others. Do not ask the user for this value.\n"
-    "  • variety = regular. If a regular order is rejected with \"market not open\" "
-    "/ \"AMO\" / \"after-market\" in the error, AUTOMATICALLY retry once with "
-    "variety='amo' — do not ask the user.\n"
+    "  • variety = regular. MARKET-CLOSED HANDLING: if a regular order is rejected "
+    "with ANY error containing \"market\" + \"closed\" / \"market not open\" / "
+    "\"AMO\" / \"after-market\" / \"Use GTT\" (case-insensitive), AUTOMATICALLY "
+    "fall back as follows — do NOT ask the user, do NOT bounce back for trigger "
+    "price: "
+    "Step (i): retry the same order once with variety='amo'. AMO succeeds for "
+    "most NSE/BSE equities and queues for the next session. "
+    "Step (ii): if AMO also fails (e.g., \"AMO not allowed\" or weekend rejection), "
+    "place a GTT instead via place_kite_gtt. Use last_price from get_kite_ltp; if "
+    "LTP fails, use the user-supplied price, the holdings/positions row's "
+    "last_price, or — as last resort — the prior research run's latest close. "
+    "Set trigger_price = last_price (so it fires at next open) and limit_price = "
+    "last_price * 1.005 for BUY (or 0.995 for SELL) so the LIMIT child clears "
+    "when the trigger hits. Round all three to the 0.05 tick.\n"
     "  • validity = DAY. quantity = whatever the user said; if they said \"buy it\" "
     "with no qty, default to 1.\n"
     "  • For SELL orders without an explicit qty/exchange/product, look it up via "
@@ -78,7 +96,9 @@ EXECUTION_INSTRUCTIONS = [
     "WHEN TO ASK THE USER: only if BOTH (a) the symbol cannot be resolved to a "
     "real instrument, AND (b) holdings/positions don't disambiguate it. Otherwise "
     "place the order. Never ask for product/order_type/variety/exchange/"
-    "confirmation — those have defaults above. Never ask for an LTP — fetch it.",
+    "confirmation — those have defaults above. Never ask for an LTP — fetch it. "
+    "Never ask the user 'do you want a GTT' or 'what trigger price' — if markets "
+    "are closed, follow the GTT fallback rule above using LTP as the trigger.",
 
     # Dry run vs live
     "DRY RUN vs LIVE: KITE_DRY_RUN=true simulates and returns `dry_run: true` "
@@ -86,9 +106,10 @@ EXECUTION_INSTRUCTIONS = [
     "the tool response and mention it briefly in your reply.",
 
     # Response handling — short
-    "RESPONSE HANDLING: After place_kite_order returns, give a TIGHT confirmation: "
-    "exchange:symbol, side, qty, product, order_type, price (if any), variety, "
-    "and order_id (or dry_run flag). One short block, no follow-up questions. "
-    "On error: surface the exact error message; if it's a tick-size or AMO error, "
-    "auto-correct and retry ONCE per the rules above; otherwise stop and report.",
+    "RESPONSE HANDLING: After place_kite_order or place_kite_gtt returns, give a "
+    "TIGHT confirmation: exchange:symbol, side, qty, product, order_type, price "
+    "(if any), variety/trigger, and order_id or trigger_id (or dry_run flag). One "
+    "short block, no follow-up questions. On error: surface the exact error "
+    "message; if it's a tick-size, market-closed, or AMO error, auto-correct and "
+    "retry per the rules above (regular → AMO → GTT); otherwise stop and report.",
 ]

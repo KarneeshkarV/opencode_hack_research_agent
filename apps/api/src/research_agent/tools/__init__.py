@@ -16,6 +16,7 @@ from research_agent.tools.kite import (
     get_kite_margins,
     get_kite_positions,
     get_kite_profile,
+    place_kite_gtt,
     place_kite_order,
 )
 from research_agent.tools.memory import list_prior_runs, memory_tools, read_prior_run
@@ -36,6 +37,7 @@ __all__ = [
     "macro_tools",
     "market_research_tools",
     "memory_tools",
+    "place_kite_gtt",
     "place_kite_order",
     "read_prior_run",
     "risk_tools",
