@@ -1,6 +1,7 @@
 import json
 from typing import Any
 
+from research_agent import order_tracker
 from research_agent.settings import get_settings
 
 
@@ -82,7 +83,9 @@ def place_kite_order(
             params[key] = value
 
     if settings.kite_dry_run:
-        return json.dumps({"dry_run": True, "params": params})
+        result = {"dry_run": True, "params": params}
+        order_tracker.record_order(params, result)
+        return json.dumps(result)
 
     if not settings.kite_api_key or not settings.kite_access_token:
         return json.dumps(
@@ -98,7 +101,9 @@ def place_kite_order(
         kite = KiteConnect(api_key=settings.kite_api_key)
         kite.set_access_token(settings.kite_access_token)
         order_id = kite.place_order(**params)
-        return json.dumps({"order_id": order_id, "params": params})
+        result = {"order_id": order_id, "params": params}
+        order_tracker.record_order(params, result)
+        return json.dumps(result)
     except Exception as exc:
         return json.dumps({"error": str(exc), "params": params})
 
