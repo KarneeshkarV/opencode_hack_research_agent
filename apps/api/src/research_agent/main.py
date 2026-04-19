@@ -258,10 +258,17 @@ async def get_session_cost(session_id: str) -> dict[str, Any]:
         and settings.langfuse_secret_key
     ):
         try:
-            from langfuse import Langfuse
+            from langfuse.api import LangfuseAPI
 
-            client = Langfuse()
-            traces = client.api.trace.list(session_id=session_id, limit=100).data or []
+            client = LangfuseAPI(
+                base_url=settings.langfuse_host,
+                x_langfuse_sdk_name=settings.service_name,
+                x_langfuse_sdk_version=settings.service_version,
+                x_langfuse_public_key=settings.langfuse_public_key,
+                username=settings.langfuse_public_key,
+                password=settings.langfuse_secret_key,
+            )
+            traces = client.trace.list(session_id=session_id, limit=100).data or []
             trace_count = len(traces)
             cost_usd = {
                 "total": sum(float(getattr(t, "total_cost", 0) or 0) for t in traces),
