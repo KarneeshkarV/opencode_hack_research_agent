@@ -1,9 +1,28 @@
-import React from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Box, Text } from 'ink';
 import Gradient from 'ink-gradient';
 
 import { AGENT_ACCENT_GRADIENT, COLOR } from './theme.js';
 /* All hex colors below come from COLOR.* — Catppuccin Mocha palette */
+
+/**
+ * Lightweight "user is interacting" bus.
+ *
+ * Writing into the terminal while the user is scrolling causes visible flicker
+ * because the animation's frequent re-renders interleave with scroll redraws.
+ * We freeze the MarketPulse animation briefly after every keypress so the
+ * terminal gets quiet frames to complete the scroll paint cleanly.
+ *
+ * `notifyUserActivity()` is called from the top-level useInput handler in
+ * app.jsx. `MarketPulse` below checks this timestamp each tick and skips its
+ * setState (i.e. no re-render) while within QUIET_AFTER_INPUT_MS of the last
+ * keypress.
+ */
+const ACTIVITY = { lastKeyTs: 0 };
+export const QUIET_AFTER_INPUT_MS = 400;
+export function notifyUserActivity() {
+  ACTIVITY.lastKeyTs = Date.now();
+}
 
 function fmt$(n, currency = 'USD') {
   try {
@@ -170,6 +189,135 @@ function CostCard({ costSummary }) {
   );
 }
 
+/**
+ * MarketPulse
+ * ───────────
+ * A purely decorative bouncing-bars animation that sits below the COST card.
+ * No text, no labels, no title — just a tall multi-row bar chart where each
+ * column bounces up and down on its own sine-wave phase, like a big music
+ * equalizer. Has NO dependency on prompt/market data.
+ *
+ *   • BAR_COUNT columns spread across the panel, each with its own phase
+ *     offset so the row ripples like a wave traveling across.
+ *   • BAR_ROWS rows tall — each row prints the portion of the bar that
+ *     belongs at that vertical level (full block if the bar is taller
+ *     than this row, partial block at the top, space if the bar is
+ *     shorter than this row).
+ *   • Each column has a pastel rainbow color; the top of each bar is
+ *     rendered bold for a soft glow.
+ *
+ * Pure-CPU, no deps — ink re-renders on a TICK_MS timer via setState.
+ *
+ * Anti-flicker: the animation freezes for QUIET_AFTER_INPUT_MS after any
+ * keypress (signalled via `notifyUserActivity()` from app.jsx). Skipping the
+ * setState during that window means zero re-renders while the user is
+ * scrolling, which lets the terminal complete its scroll redraw cleanly
+ * instead of fighting the animation's 6–10 fps repaints.
+ */
+const BAR_PARTIAL = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█']; // 8 partial fills
+const BAR_COUNT = 18; // columns (width of the chart)
+const BAR_ROWS = 6; // vertical rows — each row = 8 sub-levels, so total height = 48 sub-units
+const TICK_MS = 160;
+
+/** Pastel rainbow across the bars (Catppuccin-ish). Loops if BAR_COUNT > length. */
+const BAR_PALETTE = [
+  COLOR.pink,
+  COLOR.mauve,
+  COLOR.lavender,
+  COLOR.sapphire,
+  COLOR.sectionHead, // sky
+  COLOR.activeBorder, // teal
+  COLOR.up, // green
+  COLOR.yellow,
+  COLOR.busyBorder, // peach
+  COLOR.maroon,
+  COLOR.down, // red
+  COLOR.flamingo,
+  COLOR.rosewater,
+  COLOR.pink,
+  COLOR.mauve,
+  COLOR.lavender,
+  COLOR.sapphire,
+  COLOR.sectionHead,
+];
+
+const MarketPulse = React.memo(function MarketPulse() {
+  // Single monotonic frame counter drives every sine wave so the whole
+  // widget moves in harmony rather than randomly.
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      // Skip the tick entirely (no setState → no re-render) while the user
+      // has recently interacted with the TTY. This prevents flicker when
+      // scrolling chat with j/k or typing in the prompt.
+      if (Date.now() - ACTIVITY.lastKeyTs < QUIET_AFTER_INPUT_MS) return;
+      setFrame((f) => (f + 1) % 1_000_000);
+    }, TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  // Compute each bar's height in sub-units (0 .. BAR_ROWS * 8).
+  const maxSub = BAR_ROWS * BAR_PARTIAL.length; // e.g. 8 rows * 8 = 64
+  const heights = Array.from({ length: BAR_COUNT }, (_, i) => {
+    const t = frame * 0.18;
+    const phase = i * 0.55;
+    const wave = Math.sin(t + phase) * 0.6 + Math.sin(t * 0.5 + phase * 1.7) * 0.4;
+    // Map wave ∈ [-1, 1] → height ∈ [0, maxSub], with a little headroom
+    // so the bars visibly crest and trough.
+    return Math.round(((wave + 1) / 2) * maxSub);
+  });
+
+  // Render from top row (BAR_ROWS-1) down to bottom row (0). For each row,
+  // for each column, emit: full block, partial block, or space.
+  const rows = [];
+  for (let r = BAR_ROWS - 1; r >= 0; r--) {
+    const rowFloor = r * BAR_PARTIAL.length; // sub-units consumed by rows below
+    const rowCeil = rowFloor + BAR_PARTIAL.length; // sub-units if this row is full
+    const cells = heights.map((h, i) => {
+      const color = BAR_PALETTE[i % BAR_PALETTE.length];
+      let glyph;
+      let isTop = false;
+      if (h >= rowCeil) {
+        // Bar fully covers this row.
+        glyph = '█';
+      } else if (h > rowFloor) {
+        // Bar tops out somewhere in this row — pick the matching partial.
+        glyph = BAR_PARTIAL[h - rowFloor - 1];
+        isTop = true;
+      } else {
+        // Bar is shorter than this row — empty space (but keep width).
+        glyph = ' ';
+      }
+      return (
+        <Text key={i} color={color} bold={isTop}>
+          {' '}
+          {glyph}
+        </Text>
+      );
+    });
+    rows.push(
+      <Box key={r} flexDirection="row" justifyContent="center" width="100%">
+        {cells}
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      marginTop={1}
+      flexDirection="column"
+      alignItems="center"
+      width="100%"
+      height={BAR_ROWS}
+      flexShrink={0}
+      overflow="hidden"
+    >
+      {rows}
+    </Box>
+  );
+});
+
 export function RightBlotter({ phase, symbol, costSummary }) {
   if (!symbol) {
     return (
@@ -234,9 +382,16 @@ export function RightBlotter({ phase, symbol, costSummary }) {
   const posSymbol = hasPosition ? realPosition.symbol : phase.symbol;
 
   return (
-    <Box flexDirection="column" paddingX={1} paddingY={0}>
+    <Box
+      flexDirection="column"
+      paddingX={1}
+      paddingY={0}
+      width="100%"
+      height="100%"
+      overflow="hidden"
+    >
       {/* ── Header ── */}
-      <Box flexDirection="row" alignItems="center" justifyContent="space-between">
+      <Box flexDirection="row" alignItems="center" justifyContent="space-between" flexShrink={0}>
         <Box flexDirection="row" alignItems="center">
           <Text color={COLOR.divider} bold>▌</Text>
           <Text bold>
@@ -355,6 +510,9 @@ export function RightBlotter({ phase, symbol, costSummary }) {
 
       {/* ── COST ── */}
       <CostCard costSummary={costSummary} />
+
+      {/* ── MARKET PULSE (decorative animation, not tied to data) ── */}
+      <MarketPulse />
     </Box>
   );
 }
