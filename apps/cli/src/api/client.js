@@ -103,3 +103,18 @@ function formatDuration(milliseconds) {
   }
   return `${Math.round(milliseconds / 1000)}s`;
 }
+
+export async function fetchSessionCost(
+  sessionId,
+  {apiUrl = process.env.RESEARCH_AGENT_API_URL ?? DEFAULT_API_URL} = {}
+) {
+  if (!sessionId) throw new Error('sessionId is required');
+  const response = await fetch(
+    `${apiUrl}/sessions/${encodeURIComponent(sessionId)}/cost`
+  );
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`cost fetch failed with ${response.status}: ${detail}`);
+  }
+  return response.json();
+}

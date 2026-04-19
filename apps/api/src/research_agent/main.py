@@ -15,7 +15,7 @@ from agno.run.team import RunCompletedEvent as TeamRunCompletedEvent  # noqa: E4
 from fastapi import FastAPI, Form, HTTPException  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
 
-from research_agent import memory  # noqa: E402
+from research_agent import memory, order_tracker  # noqa: E402
 from research_agent.agents import financial_research_agents, financial_research_team  # noqa: E402
 from research_agent.settings import get_settings  # noqa: E402
 from research_agent.tools.financial import TimeoutYFinanceTools  # noqa: E402
@@ -164,6 +164,7 @@ async def _run_and_capture(
     member_outputs: list[dict[str, Any]] = []
     team_synthesis = ""
 
+    session_token = order_tracker.set_session(session_id)
     try:
         stream = financial_research_team.arun(
             input=message,
@@ -197,6 +198,8 @@ async def _run_and_capture(
     except Exception as exc:  # noqa: BLE001
         logger.exception("Team run failed: %s", exc)
         raise
+    finally:
+        order_tracker.reset_session(session_token)
 
     member_outputs = _dedupe_members(member_outputs)
     resolved = _resolve_ticker(message, ticker)
@@ -234,6 +237,54 @@ def _dedupe_members(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if existing is None or len(member["content"]) > len(existing["content"]):
             by_id[agent_id] = member
     return list(by_id.values())
+
+
+@base_app.get("/sessions/{session_id}/cost")
+async def get_session_cost(session_id: str) -> dict[str, Any]:
+    """Aggregate LLM cost + latency (from Langfuse) and INR order charges for
+    a conversation thread. Called by the CLI at the end of each run so the user
+    sees how much the thread cost and what it'll cost if they actually execute
+    the orders they dry-ran.
+    """
+    cost_usd: dict[str, float] | None = None
+    tokens = 0
+    latency_seconds = 0.0
+    trace_count = 0
+
+    settings = get_settings()
+    if (
+        settings.langfuse_enabled
+        and settings.langfuse_public_key
+        and settings.langfuse_secret_key
+    ):
+        try:
+            from langfuse import Langfuse
+
+            client = Langfuse()
+            traces = client.api.trace.list(session_id=session_id, limit=100).data or []
+            trace_count = len(traces)
+            cost_usd = {
+                "total": sum(float(getattr(t, "total_cost", 0) or 0) for t in traces),
+                "input": sum(float(getattr(t, "input_cost", 0) or 0) for t in traces),
+                "output": sum(float(getattr(t, "output_cost", 0) or 0) for t in traces),
+            }
+            tokens = sum(int(getattr(t, "total_tokens", 0) or 0) for t in traces)
+            latency_seconds = sum(float(getattr(t, "latency", 0) or 0) for t in traces)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Langfuse cost lookup failed for session %s: %s", session_id, exc)
+
+    orders = order_tracker.get_orders(session_id)
+    total_charges_inr = round(sum(o["charges"]["total"] for o in orders), 4)
+
+    return {
+        "session_id": session_id,
+        "cost_usd": cost_usd,
+        "tokens": tokens,
+        "latency_seconds": round(latency_seconds, 3),
+        "trace_count": trace_count,
+        "orders": orders,
+        "total_order_charges_inr": total_charges_inr,
+    }
 
 
 @base_app.post(f"/teams/{financial_research_team.id}/runs")

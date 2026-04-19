@@ -4,7 +4,7 @@ import {dirname, join, resolve} from 'node:path';
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Box, Text, useApp, useInput} from 'ink';
 
-import {runResearchStream} from './api/client.js';
+import {fetchSessionCost, runResearchStream} from './api/client.js';
 import {prepareResearchMessage} from './ticker-context.js';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -25,6 +25,7 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
   const [intermediateSteps, setIntermediateSteps] = useState([]);
   const [eventConsole, setEventConsole] = useState([]);
   const [logError, setLogError] = useState(null);
+  const [costSummary, setCostSummary] = useState(null);
   const bufferRef = useRef('');
   const sseBufferRef = useRef('');
   const runCounterRef = useRef(0);
@@ -40,6 +41,8 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
       'http://localhost:7777',
     [apiUrl]
   );
+
+  const effectiveSessionId = sessionId || LOG_SESSION_ID;
 
   const configuredLogFile = useMemo(
     () => logFile ?? process.env.RESEARCH_AGENT_SSE_LOG_FILE ?? null,
@@ -91,6 +94,7 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
         setEventConsole([]);
         setLogError(null);
         setActiveLogFile(null);
+        setCostSummary(null);
         return;
       }
 
@@ -111,6 +115,7 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
           setEventConsole([]);
           setLogError(null);
           setActiveLogFile(null);
+          setCostSummary(null);
         }
         return;
       }
@@ -169,12 +174,12 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
             sector: peer.sector
           })),
           apiUrl: resolvedApiUrl,
-          sessionId: sessionId ?? null
+          sessionId: effectiveSessionId
         }, setLogError);
 
         for await (const chunk of runResearchStream(prepared.message, {
           apiUrl: resolvedApiUrl,
-          sessionId,
+          sessionId: effectiveSessionId,
           ticker: prepared.ticker ?? ticker
         })) {
           if (cancelled) return;
@@ -216,6 +221,20 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
           status: 'done'
         }, setLogError);
         setStatus('done');
+
+        fetchSessionCost(effectiveSessionId, {apiUrl: resolvedApiUrl})
+          .then(summary => {
+            if (cancelled) return;
+            setCostSummary(summary);
+            logSseRecord(currentLogFile, {
+              type: 'session_cost',
+              runNumber,
+              sessionId: effectiveSessionId,
+              summary
+            }, setLogError);
+          })
+          .catch(() => {});
+
         if (query) {
           setTimeout(() => exit(), 50);
         }
@@ -241,7 +260,7 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
     return () => {
       cancelled = true;
     };
-  }, [configuredLogFile, exit, query, resolvedApiUrl, sessionId, submittedQuery, ticker]);
+  }, [configuredLogFile, effectiveSessionId, exit, query, resolvedApiUrl, submittedQuery, ticker]);
 
   const spinner = SPINNER_FRAMES[tick % SPINNER_FRAMES.length];
   const seconds = (elapsed / 10).toFixed(1);
@@ -250,7 +269,7 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
     <Box flexDirection="column" paddingX={1} paddingY={1}>
       <Header
         apiUrl={resolvedApiUrl}
-        sessionId={sessionId}
+        sessionId={effectiveSessionId}
         statusLabel={statusLabel}
         statusColor={statusColor}
         logFile={logFileLabel}
@@ -272,6 +291,7 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
             intermediateSteps={intermediateSteps}
             eventConsole={eventConsole}
             debugEvents={debugEvents}
+            costSummary={costSummary}
           />
         )}
       </Box>
@@ -347,7 +367,8 @@ function QueryCard({
   finalOutput,
   intermediateSteps,
   eventConsole,
-  debugEvents
+  debugEvents,
+  costSummary
 }) {
   return (
     <Box flexDirection="column">
@@ -372,6 +393,12 @@ function QueryCard({
           <Text color="red">✗ failed</Text>
         ) : null}
       </Box>
+
+      {status === 'done' && costSummary && (
+        <Box>
+          <Text color="gray">{formatCostSummary(costSummary)}</Text>
+        </Box>
+      )}
 
       {intermediateSteps.length > 0 && (
         <Box marginTop={1} flexDirection="column">
@@ -468,6 +495,26 @@ function formatBytes(n) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function formatCostSummary(summary) {
+  const parts = [];
+  const total = summary?.cost_usd?.total;
+  if (typeof total === 'number' && total > 0) {
+    parts.push(`cost $${total.toFixed(4)}`);
+  }
+  if (typeof summary?.tokens === 'number' && summary.tokens > 0) {
+    parts.push(`${summary.tokens.toLocaleString()} tokens`);
+  }
+  if (typeof summary?.latency_seconds === 'number' && summary.latency_seconds > 0) {
+    parts.push(`${summary.latency_seconds.toFixed(1)}s traced`);
+  }
+  const orders = Array.isArray(summary?.orders) ? summary.orders.length : 0;
+  if (orders > 0) {
+    const charges = summary.total_order_charges_inr ?? 0;
+    parts.push(`${orders} order${orders > 1 ? 's' : ''} · charges ₹${charges.toFixed(2)}`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : 'no cost data yet';
 }
 
 function extractFinalResponse(raw) {
