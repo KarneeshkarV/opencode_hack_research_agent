@@ -26,6 +26,7 @@ def test_financial_research_team_members() -> None:
         "term-sheet-agent",
         "technical-analysis-agent",
         "fundamental-analysis-agent",
+        "risk-management-agent",
         "execution-agent",
     }
 
