@@ -6,6 +6,7 @@ export async function* runResearchStream(
   {
     apiUrl = process.env.RESEARCH_AGENT_API_URL ?? DEFAULT_API_URL,
     sessionId,
+    ticker,
     idleTimeoutMs = getIdleTimeoutMs()
   } = {}
 ) {
@@ -17,6 +18,9 @@ export async function* runResearchStream(
 
   if (sessionId) {
     body.set('session_id', sessionId);
+  }
+  if (ticker) {
+    body.set('ticker', ticker);
   }
 
   const controller = new AbortController();

@@ -5,6 +5,7 @@ import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Box, Text, useApp, useInput} from 'ink';
 
 import {runResearchStream} from './api/client.js';
+import {prepareResearchMessage} from './ticker-context.js';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -12,7 +13,7 @@ const DEFAULT_SSE_LOG_DIR = join(REPO_ROOT, 'tmp/logs');
 const LATEST_SSE_LOG = join(DEFAULT_SSE_LOG_DIR, 'research-agent-sse-events.latest.jsonl');
 const LOG_SESSION_ID = `${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${process.pid}`;
 
-export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
+export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = false}) {
   const {exit} = useApp();
   const [draft, setDraft] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState(query ?? null);
@@ -74,35 +75,12 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
     }
   }, [status]);
 
-  useInput((input, key) => {
-    if (query || isBusy) {
-      return;
-    }
-
-    if (key.ctrl && input === 'l') {
-      setSubmittedQuery(null);
-      setError(null);
-      setStatus('idle');
-      setElapsed(0);
-      bufferRef.current = '';
-      sseBufferRef.current = '';
-      bytesRef.current = 0;
-      setBytes(0);
-      setFinalOutput('');
-      setIntermediateSteps([]);
-      setEventConsole([]);
-      setLogError(null);
-      setActiveLogFile(null);
-      return;
-    }
-
-    if (key.return) {
-      const nextQuery = draft.trim();
-      if (nextQuery.length > 0) {
+  useInput(
+    (input, key) => {
+      if (key.ctrl && input === 'l') {
+        setSubmittedQuery(null);
         setError(null);
-        setStatus('connecting');
-        setSubmittedQuery(nextQuery);
-        setDraft('');
+        setStatus('idle');
         setElapsed(0);
         bufferRef.current = '';
         sseBufferRef.current = '';
@@ -113,19 +91,41 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
         setEventConsole([]);
         setLogError(null);
         setActiveLogFile(null);
+        return;
       }
-      return;
-    }
 
-    if (key.backspace || key.delete) {
-      setDraft(current => current.slice(0, -1));
-      return;
-    }
+      if (key.return) {
+        const nextQuery = draft.trim();
+        if (nextQuery.length > 0) {
+          setError(null);
+          setStatus('connecting');
+          setSubmittedQuery(nextQuery);
+          setDraft('');
+          setElapsed(0);
+          bufferRef.current = '';
+          sseBufferRef.current = '';
+          bytesRef.current = 0;
+          setBytes(0);
+          setFinalOutput('');
+          setIntermediateSteps([]);
+          setEventConsole([]);
+          setLogError(null);
+          setActiveLogFile(null);
+        }
+        return;
+      }
 
-    if (input) {
-      setDraft(current => current + input);
-    }
-  });
+      if (key.backspace || key.delete) {
+        setDraft(current => current.slice(0, -1));
+        return;
+      }
+
+      if (input) {
+        setDraft(current => current + input);
+      }
+    },
+    {isActive: !query && !isBusy}
+  );
 
   useEffect(() => {
     if (!isBusy) return;
@@ -149,17 +149,33 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
 
       try {
         setStatus('running');
+        const prepared = await prepareResearchMessage(submittedQuery, {
+          explicitTicker: ticker
+        });
+
+        if (cancelled) return;
+
         logSseRecord(currentLogFile, {
           type: 'run_start',
           runNumber,
           query: submittedQuery,
+          resolvedTicker: prepared.ticker,
+          resolvedTickers: prepared.resolution?.tickers ?? [],
+          tickerResolutionSource: prepared.resolution?.source ?? null,
+          sector: prepared.sector || null,
+          memoryPeers: prepared.memoryPeers.map(peer => ({
+            ticker: peer.ticker,
+            runId: peer.runId,
+            sector: peer.sector
+          })),
           apiUrl: resolvedApiUrl,
           sessionId: sessionId ?? null
         }, setLogError);
 
-        for await (const chunk of runResearchStream(submittedQuery, {
+        for await (const chunk of runResearchStream(prepared.message, {
           apiUrl: resolvedApiUrl,
-          sessionId
+          sessionId,
+          ticker: prepared.ticker ?? ticker
         })) {
           if (cancelled) return;
           bufferRef.current += chunk;
@@ -225,7 +241,7 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
     return () => {
       cancelled = true;
     };
-  }, [configuredLogFile, exit, query, resolvedApiUrl, sessionId, submittedQuery]);
+  }, [configuredLogFile, exit, query, resolvedApiUrl, sessionId, submittedQuery, ticker]);
 
   const spinner = SPINNER_FRAMES[tick % SPINNER_FRAMES.length];
   const seconds = (elapsed / 10).toFixed(1);

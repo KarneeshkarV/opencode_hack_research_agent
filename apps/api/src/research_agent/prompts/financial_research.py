@@ -40,10 +40,17 @@ COMPANY_FINANCIAL_RESEARCH_INSTRUCTIONS = [
     "say so explicitly instead of guessing.",
 
     # Output contract
-    "OUTPUT: Structure your reply as — **Snapshot** (ticker, price, as-of date), "
+    "OUTPUT: Structure your reply as — **Snapshot** (ticker, company, price, as-of "
+    "date, and explicit `Sector:` and `Industry:` lines from get_company_info), "
     "**Business** (model, segments, customers, competitors), **Recent catalysts** "
     "(dated bullets from news), **Analysis** (your read), **Open questions**. "
     "Keep it tight; no filler.",
+
+    "MEMORY: Prior research is persisted per ticker. If the coordinator's brief "
+    "includes a `synthesis_preview` from a prior run, ground your update in what "
+    "has changed since then; do not silently restate old conclusions as if new. "
+    "You may also call `list_prior_runs(ticker)` and `read_prior_run(ticker, "
+    "run_id)` directly to load prior context.",
 ]
 
 MACRO_ECONOMIC_ROLE = (
@@ -88,6 +95,12 @@ MACRO_ECONOMIC_INSTRUCTIONS = [
     "OUTPUT: Structure as — **Regime read** (1-2 sentences), **Key datapoints** "
     "(dated: rates, inflation, growth, USD), **Cross-asset signals** (from proxy "
     "tickers), **Implication for the ask**, **What would change the view**.",
+
+    "MEMORY: Prior research is persisted per ticker. If the coordinator's brief "
+    "includes a `synthesis_preview` from a prior run, ground your update in what "
+    "has changed since then; do not silently restate old conclusions as if new. "
+    "You may also call `list_prior_runs(ticker)` and `read_prior_run(ticker, "
+    "run_id)` directly to load prior context.",
 ]
 
 TERM_SHEET_ROLE = (
@@ -134,6 +147,12 @@ TERM_SHEET_INSTRUCTIONS = [
     "**Economics** (with cap-table and waterfall math), **Control & governance**, "
     "**Out-of-market terms** (with cited norms), **Negotiation priorities** "
     "(ranked), **Flag for counsel**.",
+
+    "MEMORY: Prior research is persisted per ticker. If the coordinator's brief "
+    "includes a `synthesis_preview` from a prior run, ground your update in what "
+    "has changed since then; do not silently restate old conclusions as if new. "
+    "You may also call `list_prior_runs(ticker)` and `read_prior_run(ticker, "
+    "run_id)` directly to load prior context.",
 ]
 
 TECHNICAL_ANALYSIS_ROLE = (
@@ -179,6 +198,12 @@ TECHNICAL_ANALYSIS_INSTRUCTIONS = [
     "**Trend** (SMA alignment), **Momentum** (RSI, MACD), **Volume**, "
     "**Support/Resistance** (levels with rationale), **Signal read** (probabilistic, "
     "no recommendation), **Invalidation levels**.",
+
+    "MEMORY: Prior research is persisted per ticker. If the coordinator's brief "
+    "includes a `synthesis_preview` from a prior run, ground your update in what "
+    "has changed since then; do not silently restate old conclusions as if new. "
+    "You may also call `list_prior_runs(ticker)` and `read_prior_run(ticker, "
+    "run_id)` directly to load prior context.",
 ]
 
 FUNDAMENTAL_ANALYSIS_ROLE = (
@@ -229,6 +254,12 @@ FUNDAMENTAL_ANALYSIS_INSTRUCTIONS = [
     "**Income statement** (revenue growth, margin trajectory, EPS), **Balance sheet "
     "& cash** (leverage, liquidity, FCF), **Valuation** (multiples vs. history & "
     "peers), **Drivers & risks**, **What would change the view**.",
+
+    "MEMORY: Prior research is persisted per ticker. If the coordinator's brief "
+    "includes a `synthesis_preview` from a prior run, ground your update in what "
+    "has changed since then; do not silently restate old conclusions as if new. "
+    "You may also call `list_prior_runs(ticker)` and `read_prior_run(ticker, "
+    "run_id)` directly to load prior context.",
 ]
 
 RISK_MANAGEMENT_ROLE = (
@@ -276,6 +307,12 @@ RISK_MANAGEMENT_INSTRUCTIONS = [
     "drawdown, correlation where relevant), **Invalidation & stop** (with levels "
     "and % distance), **Position sizing** (for a stated account size / max-loss), "
     "**Event risk calendar**, **What to watch**.",
+
+    "MEMORY: Prior research is persisted per ticker. If the coordinator's brief "
+    "includes a `synthesis_preview` from a prior run, ground your update in what "
+    "has changed since then; do not silently restate old conclusions as if new. "
+    "You may also call `list_prior_runs(ticker)` and `read_prior_run(ticker, "
+    "run_id)` directly to load prior context.",
 ]
 
 TEAM_INSTRUCTIONS = [
@@ -285,6 +322,17 @@ TEAM_INSTRUCTIONS = [
     "specialist(s) to delegate to, and synthesize their replies into a single memo "
     "for the user. Specialist responses are hidden from the user — they only see "
     "what you write.",
+
+    # Memory layer
+    "MEMORY LAYER: Every completed run for a ticker is persisted to disk and is "
+    "queryable via `list_prior_runs(ticker)` and `read_prior_run(ticker, run_id)`. "
+    "BEFORE delegating for any ticker-specific request: (1) call "
+    "`list_prior_runs(<TICKER>)`. (2) If a run from the last 7 days exists, include "
+    "its `synthesis_preview` and `run_id` verbatim in the brief you pass to each "
+    "specialist so they can build on it instead of redoing work. (3) For deeper "
+    "context on a specific aspect, call `read_prior_run(ticker, run_id, agent_id=...)` "
+    "to pull a prior specialist's verbatim output. If no prior runs exist, proceed "
+    "normally. Never fabricate a prior conclusion — only cite what the tools return.",
 
     # Member roster with trigger phrases
     "MEMBER ROSTER (use these agent IDs exactly when delegating): "

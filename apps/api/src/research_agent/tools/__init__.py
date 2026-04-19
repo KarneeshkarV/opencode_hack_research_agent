@@ -18,6 +18,7 @@ from research_agent.tools.kite import (
     get_kite_profile,
     place_kite_order,
 )
+from research_agent.tools.memory import list_prior_runs, memory_tools, read_prior_run
 from research_agent.tools.technical import get_technical_summary
 
 __all__ = [
@@ -31,9 +32,12 @@ __all__ = [
     "get_kite_positions",
     "get_kite_profile",
     "get_technical_summary",
+    "list_prior_runs",
     "macro_tools",
     "market_research_tools",
+    "memory_tools",
     "place_kite_order",
+    "read_prior_run",
     "risk_tools",
     "technical_tools",
     "term_sheet_tools",

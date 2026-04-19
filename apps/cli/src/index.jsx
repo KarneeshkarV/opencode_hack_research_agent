@@ -15,6 +15,7 @@ const cli = meow(
     --query, -q       Research question to send to the backend
     --api-url         Backend URL. Defaults to RESEARCH_AGENT_API_URL or http://localhost:7777
     --session-id      Optional Agno session id
+    --ticker          Stock ticker for memory-layer persistence (overrides query auto-detection)
     --log-file        JSONL file for parsed SSE events. Defaults to one tmp/logs/research-agent-sse-events-<session>.jsonl file per CLI session unless RESEARCH_AGENT_SSE_LOG_FILE is set
     --debug-events    Show a live raw SSE event console in the terminal UI
   `,
@@ -29,6 +30,9 @@ const cli = meow(
         type: 'string'
       },
       sessionId: {
+        type: 'string'
+      },
+      ticker: {
         type: 'string'
       },
       logFile: {
@@ -47,6 +51,7 @@ render(
     query={cli.flags.query}
     apiUrl={cli.flags.apiUrl}
     sessionId={cli.flags.sessionId}
+    ticker={cli.flags.ticker}
     logFile={cli.flags.logFile}
     debugEvents={cli.flags.debugEvents}
   />
