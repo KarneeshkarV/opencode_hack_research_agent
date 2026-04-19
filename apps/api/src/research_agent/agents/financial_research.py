@@ -1,4 +1,5 @@
 from agno.agent import Agent
+from agno.db.json import JsonDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team, TeamMode
 
@@ -41,6 +42,13 @@ def _model() -> OpenAIResponses:
 def _sub_agent_model() -> OpenAIResponses:
     settings = get_settings()
     return OpenAIResponses(id="gpt-5.4-mini", api_key=settings.openai_api_key or None)
+
+
+def _session_db() -> JsonDb:
+    settings = get_settings()
+    db_path = settings.company_memory_dir.parent / "tmp" / "agno_sessions"
+    db_path.mkdir(parents=True, exist_ok=True)
+    return JsonDb(db_path=str(db_path))
 
 
 def build_company_financial_research_agent() -> Agent:
@@ -127,7 +135,7 @@ def build_execution_agent() -> Agent:
         name="Execution Agent",
         role=EXECUTION_ROLE,
         model=_sub_agent_model(),
-        tools=[*execution_tools(), *memory_tools()],
+        tools=[*execution_tools(), *account_tools(), *memory_tools()],
         instructions=EXECUTION_INSTRUCTIONS,
         markdown=True,
         add_datetime_to_context=True,
@@ -159,6 +167,9 @@ def build_financial_research_team(members: list[Agent] | None = None) -> Team:
         add_datetime_to_context=True,
         share_member_interactions=True,
         show_members_responses=False,
+        db=_session_db(),
+        add_history_to_context=True,
+        num_history_runs=5,
     )
 
 
