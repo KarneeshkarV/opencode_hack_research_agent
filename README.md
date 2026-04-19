@@ -2,8 +2,9 @@
 
 A terminal-native trading and research assistant. A coordinator team of specialized Agno agents researches markets, reasons over fundamentals, technicals, macro, and risk, and can place live orders on Zerodha Kite — all driven from an Ink/React CLI that renders a Bloomberg-style workbench.
 
-- `apps/cli`: Ink/React terminal UI — prompt composer, trading chart, ticker context, right-side blotter
-- `apps/api`: Agno + FastAPI backend hosting the research/execution team
+- `apps/cli`: Ink/React command line frontend
+- `apps/web`: Vite/React browser frontend (same UX as the CLI, for the web)
+- `apps/api`: Agno + FastAPI backend
 - `packages/contracts`: generated API contracts and client artifacts
 
 Runtime boundary:
@@ -107,11 +108,25 @@ The latest CLI session log is also available at `tmp/logs/research-agent-sse-eve
 ## Commands
 
 ```bash
-bun run cli        # run the Ink workbench
+bun run cli        # run the Ink app
+bun run web        # run the web UI (Vite dev server @ http://localhost:5173)
+bun run web:dev    # run API + web UI together
+bun run web:build  # build web UI for production
 bun run api:dev    # run the Agno/FastAPI backend
 bun run api:test   # run backend tests
 bun run lint       # lint JS and Python workspaces
 bun run format     # format JS and Python workspaces
+```
+
+## Web UI
+
+The web app mirrors the terminal CLI inside the browser — same neon aurora
+theme, same chat + intermediate steps + blotter/market snapshot. It talks to
+the backend via the Vite dev proxy (`/api` → `RESEARCH_AGENT_API_URL`), so
+there's no CORS setup required.
+
+```bash
+bun run web:dev    # starts API + web together; open http://localhost:5173
 ```
 
 ## Environment
