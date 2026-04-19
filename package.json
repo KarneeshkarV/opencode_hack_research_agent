@@ -1,0 +1,22 @@
+{
+  "name": "opencode-hack-research-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.1.38",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "scripts/dev.sh",
+    "cli": "cd apps/cli && bun run dev",
+    "api:dev": "cd apps/api && uv run uvicorn research_agent.main:app --reload --host ${AGENT_OS_HOST:-localhost} --port ${AGENT_OS_PORT:-7777} --log-level warning",
+    "api:test": "cd apps/api && uv run pytest",
+    "lint": "bun --filter @research-agent/cli lint && cd apps/api && uv run ruff check .",
+    "format": "bun --filter @research-agent/cli format && cd apps/api && uv run ruff format ."
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
