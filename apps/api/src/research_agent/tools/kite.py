@@ -108,6 +108,99 @@ def place_kite_order(
         return json.dumps({"error": str(exc), "params": params})
 
 
+def place_kite_gtt(
+    tradingsymbol: str,
+    transaction_type: str,
+    quantity: int,
+    last_price: float,
+    trigger_price: float,
+    limit_price: float,
+    exchange: str = "NSE",
+    product: str = "CNC",
+) -> str:
+    """Place a single-leg GTT (Good Till Triggered) order via Kite Connect.
+
+    GTT orders sit on Zerodha's servers and fire a LIMIT order when the
+    instrument's LTP crosses ``trigger_price``. They survive across sessions
+    and are the right primitive when markets are closed but you want the
+    order to execute on the next available trade. Only LIMIT child orders
+    are supported by Kite for GTT.
+
+    Args:
+        tradingsymbol: Instrument symbol, e.g. "INFY", "MCX".
+        transaction_type: BUY or SELL.
+        quantity: Number of units.
+        last_price: Current LTP of the instrument. Required by Kite for
+            trigger validation (the trigger must be within ±X% of this).
+        trigger_price: Price at which the GTT fires. For "buy when market
+            opens" pass the current LTP; for "buy on dip" pass a lower price.
+        limit_price: LIMIT price of the child order. Set slightly above
+            trigger for BUY (e.g., trigger * 1.005) and slightly below for
+            SELL so the order fills when triggered.
+        exchange: NSE or BSE. Defaults to NSE.
+        product: CNC (delivery) or NRML (overnight). Defaults to CNC.
+
+    Returns:
+        JSON string. On success: {"trigger_id": <int>, "params": {...}}.
+        On dry-run: {"dry_run": true, "params": {...}}.
+        On failure: {"error": "...", "params": {...}}.
+    """
+    settings = get_settings()
+
+    params: dict[str, Any] = {
+        "trigger_type": "single",
+        "tradingsymbol": tradingsymbol,
+        "exchange": exchange,
+        "trigger_values": [round(float(trigger_price), 2)],
+        "last_price": round(float(last_price), 2),
+        "orders": [
+            {
+                "transaction_type": transaction_type,
+                "quantity": int(quantity),
+                "order_type": "LIMIT",
+                "product": product,
+                "price": round(float(limit_price), 2),
+            }
+        ],
+    }
+
+    tracker_params = {
+        "tradingsymbol": tradingsymbol,
+        "exchange": exchange,
+        "transaction_type": transaction_type,
+        "quantity": int(quantity),
+        "product": product,
+        "order_type": "GTT-LIMIT",
+        "price": round(float(limit_price), 2),
+        "trigger_price": round(float(trigger_price), 2),
+    }
+
+    if settings.kite_dry_run:
+        result = {"dry_run": True, "params": params}
+        order_tracker.record_order(tracker_params, result)
+        return json.dumps(result)
+
+    if not settings.kite_api_key or not settings.kite_access_token:
+        return json.dumps(
+            {
+                "error": "KITE_API_KEY and KITE_ACCESS_TOKEN must be set to place live orders,"
+                " or set KITE_DRY_RUN=true to simulate."
+            }
+        )
+
+    try:
+        from kiteconnect import KiteConnect
+
+        kite = KiteConnect(api_key=settings.kite_api_key)
+        kite.set_access_token(settings.kite_access_token)
+        trigger_id = kite.place_gtt(**params)
+        result = {"trigger_id": trigger_id, "params": params}
+        order_tracker.record_order(tracker_params, result)
+        return json.dumps(result)
+    except Exception as exc:
+        return json.dumps({"error": str(exc), "params": params})
+
+
 def _kite_client():
     """Return (client, error_message). client is None when error_message is set."""
     settings = get_settings()
@@ -389,7 +482,7 @@ def get_kite_ltp(instruments: list[str]) -> str:
 
 
 def execution_tools() -> list:
-    return [place_kite_order]
+    return [place_kite_order, place_kite_gtt]
 
 
 def account_tools() -> list:
