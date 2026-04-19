@@ -19,7 +19,8 @@ agent_os = AgentOS(
     agents=financial_research_agents,
     teams=[financial_research_team],
     base_app=base_app,
-    tracing=True,
+    on_route_conflict="preserve_base_app",
+    tracing=False,
 )
 
 app = agent_os.get_app()
