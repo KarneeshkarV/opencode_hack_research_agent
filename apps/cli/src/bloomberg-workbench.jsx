@@ -65,7 +65,8 @@ export function BloombergWorkbench({
   isBusy,
   interactive,
   draft,
-  onSnapshotFinished
+  onSnapshotFinished,
+  costSummary
 }) {
   const { symbol, phase } = useMarketSnapshot(
     '',
@@ -183,7 +184,7 @@ export function BloombergWorkbench({
 
           {/* Prompt composer */}
           {interactive && (
-            <Box flexShrink={0} marginTop={1}>
+            <Box flexShrink={0} marginTop={1} width="100%">
               <PromptComposer draft={draft} disabled={isBusy} compact />
             </Box>
           )}
@@ -200,7 +201,7 @@ export function BloombergWorkbench({
           overflow="hidden"
           flexShrink={0}
         >
-          <RightBlotter phase={phase} symbol={symbol} />
+          <RightBlotter phase={phase} symbol={symbol} costSummary={costSummary} />
         </Box>
       </Box>
     </Box>

@@ -606,6 +606,7 @@ function QueryCard({
             interactive={interactive}
             draft={draft}
             onSnapshotFinished={onSnapshotFinished}
+            costSummary={costSummary}
           />
         </Box>
       )}

@@ -52,7 +52,59 @@ function BlotterCard({ title, titleColor, children }) {
 /**
  * Neon Aurora right rail: portfolio strip, blotter, instrument summary.
  */
-export function RightBlotter({ phase, symbol }) {
+function sumOrderCharge(orders, key) {
+  if (!Array.isArray(orders)) return 0;
+  return orders.reduce((acc, o) => acc + Number(o?.charges?.[key] ?? 0), 0);
+}
+
+function CostCard({ costSummary }) {
+  // No response yet from /sessions/{id}/cost
+  if (!costSummary) {
+    return (
+      <BlotterCard title="▸ COST" titleColor={COLOR.up}>
+        <Text color={COLOR.meta} dimColor>awaiting cost summary…</Text>
+      </BlotterCard>
+    );
+  }
+
+  const costUsdObj = costSummary.cost_usd; // null when Langfuse disabled
+  const tokenCostUsd = Number(costUsdObj?.total ?? 0);
+  const tokens = Number(costSummary.tokens ?? 0);
+  const sttInr = sumOrderCharge(costSummary.orders, 'stt');
+  const brokerageInr = sumOrderCharge(costSummary.orders, 'brokerage');
+  const orderCount = Array.isArray(costSummary.orders) ? costSummary.orders.length : 0;
+
+  return (
+    <BlotterCard title="▸ COST" titleColor={COLOR.up}>
+      <Row label="tokens">
+        {costUsdObj == null ? (
+          <Text color={COLOR.meta} dimColor>n/a (langfuse off)</Text>
+        ) : (
+          <>
+            <Text color={COLOR.text} bold>${tokenCostUsd.toFixed(4)}</Text>
+            <Text color={COLOR.meta}> · {tokens.toLocaleString()} tok</Text>
+          </>
+        )}
+      </Row>
+      <Row label="stt">
+        {orderCount === 0 ? (
+          <Text color={COLOR.meta} dimColor>no orders</Text>
+        ) : (
+          <Text color={COLOR.body}>₹{sttInr.toFixed(2)}</Text>
+        )}
+      </Row>
+      <Row label="brokerage">
+        {orderCount === 0 ? (
+          <Text color={COLOR.meta} dimColor>no orders</Text>
+        ) : (
+          <Text color={COLOR.body}>₹{brokerageInr.toFixed(2)}</Text>
+        )}
+      </Row>
+    </BlotterCard>
+  );
+}
+
+export function RightBlotter({ phase, symbol, costSummary }) {
   if (!symbol) {
     return (
       <Box flexDirection="column" paddingX={1} paddingY={0}>
@@ -199,6 +251,9 @@ export function RightBlotter({ phase, symbol }) {
           </Text>
         </Row>
       </BlotterCard>
+
+      {/* ── COST ── */}
+      <CostCard costSummary={costSummary} />
     </Box>
   );
 }

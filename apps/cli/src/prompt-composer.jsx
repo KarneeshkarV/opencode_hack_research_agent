@@ -12,6 +12,7 @@ export function PromptComposer({ draft, disabled, compact = false }) {
       borderColor={borderColor}
       paddingX={1}
       flexDirection="column"
+      width="100%"
     >
       <Box flexDirection="row" alignItems="center">
         {/* Prompt glyph */}
