@@ -21,6 +21,7 @@ from research_agent.prompts import (
 )
 from research_agent.settings import get_settings
 from research_agent.tools import (
+    account_tools,
     execution_tools,
     fundamental_tools,
     macro_tools,
@@ -151,6 +152,7 @@ def build_financial_research_team(members: list[Agent] | None = None) -> Team:
         mode=TeamMode.coordinate,
         model=_model(),
         members=members or build_financial_research_agents(),
+        tools=account_tools(),
         instructions=TEAM_INSTRUCTIONS,
         markdown=True,
         add_datetime_to_context=True,
