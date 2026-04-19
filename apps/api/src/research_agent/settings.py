@@ -16,6 +16,8 @@ class Settings(BaseSettings):
 
     app_name: str = "OpenCode Hack Research Agent"
     model_id: str = "gpt-5.2"
+    # Loaded from env / .env so Agno does not rely on os.environ alone (pydantic ignores unknown keys).
+    openai_api_key: str | None = None
 
 
 @lru_cache

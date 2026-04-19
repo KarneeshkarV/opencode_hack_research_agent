@@ -10,7 +10,7 @@ def build_research_agent() -> Agent:
     return Agent(
         id="research-agent",
         name="Research Agent",
-        model=OpenAIResponses(id=settings.model_id),
+        model=OpenAIResponses(id=settings.model_id, api_key=settings.openai_api_key),
         instructions=[
             "You are a concise research agent.",
             "Ask clarifying questions only when the user's request is ambiguous.",
