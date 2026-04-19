@@ -12,6 +12,14 @@ import {BloombergWorkbench} from './bloomberg-workbench.jsx';
 import {PromptComposer} from './prompt-composer.jsx';
 import {extractTickerHint} from './ticker-guess.js';
 import {prepareResearchMessage} from './ticker-context.js';
+import {
+  BRAND_GRADIENT,
+  TAGLINE_GRADIENT,
+  QUERY_ARROW_GRADIENT,
+  STEPS_GRADIENT,
+  CONSOLE_GRADIENT,
+  COLOR
+} from './theme.js';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -438,34 +446,41 @@ export function App({
   );
 }
 
-const brandGradient = ['#22d3ee', '#818cf8', '#e879f9'];
-const taglineGradient = gradient(['#64748b', '#94a3b8']);
+const taglineGradient = gradient(TAGLINE_GRADIENT);
+
+const STATUS_ICON = {
+  idle: '○',
+  connecting: '◌',
+  running: '◉',
+  done: '◆',
+  error: '✖',
+};
 
 function Header({apiUrl, sessionId, statusLabel, statusColor, logFile, replayMode}) {
+  const icon = STATUS_ICON[statusLabel] ?? '○';
   return (
     <Box flexDirection="column">
-      <Box justifyContent="space-between">
-        <Text>
+      {/* ── top bar ── */}
+      <Box justifyContent="space-between" alignItems="center">
+        <Box flexDirection="row" alignItems="center" gap={0}>
           <Text bold>
-            <Gradient colors={brandGradient}>◆ research-agent</Gradient>
+            <Gradient colors={BRAND_GRADIENT}>▲ RESEARCH AGENT</Gradient>
           </Text>
-          <Text>{taglineGradient(' · bloomberg-style blotter')}</Text>
-        </Text>
-        <Text>
-          <Text color={statusColor}>●</Text>
-          <Text color="gray"> {statusLabel}</Text>
-        </Text>
+          <Text>{taglineGradient('  ·  neon aurora terminal')}</Text>
+        </Box>
+        <Box flexDirection="row" alignItems="center">
+          <Text color={statusColor} bold>{icon}</Text>
+          <Text color={COLOR.meta}> {statusLabel.toUpperCase()}</Text>
+        </Box>
+      </Box>
+      {/* ── meta row ── */}
+      <Box flexDirection="row" gap={0}>
+        <Text color={COLOR.meta}>  ⬡ {apiUrl}</Text>
+        {sessionId && <Text color={COLOR.meta}>  ·  ⧖ {sessionId}</Text>}
+        {replayMode && <Text color={COLOR.busyBorder}>  ⏪ REPLAY</Text>}
       </Box>
       <Box>
-        <Text color="gray">  {apiUrl}</Text>
-        {sessionId && <Text color="gray">  ·  session {sessionId}</Text>}
-      </Box>
-      <Box>
-        <Text color="gray">
-          {'  '}
-          {replayMode ? 'replay source ' : 'sse log '}
-          {logFile}
-        </Text>
+        <Text color={COLOR.axis}>  {'─'.repeat(4)} {replayMode ? 'source' : 'log'}: {logFile}</Text>
       </Box>
     </Box>
   );
@@ -473,13 +488,20 @@ function Header({apiUrl, sessionId, statusLabel, statusColor, logFile, replayMod
 
 function EmptyState() {
   return (
-    <Box flexDirection="column">
-      <Text bold>
-        <Gradient colors={['#38bdf8', '#c084fc']}>Ask for a research pass.</Gradient>
-      </Text>
-      <Text color="gray">
-        Paste a task, compare options, or scope a focused investigation.
-      </Text>
+    <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="row" alignItems="center">
+        <Text bold>
+          <Gradient colors={BRAND_GRADIENT}>◈ Ready for a deep research pass.</Gradient>
+        </Text>
+      </Box>
+      <Box marginTop={0}>
+        <Text color={COLOR.body}>  Paste a task · compare options · scope an investigation</Text>
+      </Box>
+      <Box marginTop={1} borderStyle="round" borderColor={COLOR.meta} paddingX={2} paddingY={0}>
+        <Text color={COLOR.meta}>
+          Return sends  ·  j/k scrolls chat  ·  Ctrl+L clears  ·  Ctrl+C exits
+        </Text>
+      </Box>
     </Box>
   );
 }
@@ -504,27 +526,28 @@ function QueryCard({
 }) {
   return (
     <Box flexDirection="column">
-      <Box flexDirection="row">
+      <Box flexDirection="row" alignItems="center">
         <Text bold>
-          <Gradient colors={['#22d3ee', '#a5b4fc']}>❯ </Gradient>
+          <Gradient colors={QUERY_ARROW_GRADIENT}>❯ </Gradient>
         </Text>
-        <Text>{query}</Text>
+        <Text bold color={COLOR.text}>{query}</Text>
       </Box>
 
-      <Box marginTop={1}>
+      <Box marginTop={0}>
         {isBusy ? (
           <Text>
-            <Text color={statusColor}>{spinner}</Text>
-            <Text color="gray"> working · {seconds}s</Text>
-            {bytes > 0 && <Text color="gray"> · {formatBytes(bytes)} streamed</Text>}
+            <Text color={statusColor} bold>{spinner}</Text>
+            <Text color={COLOR.body}>  researching · {seconds}s</Text>
+            {bytes > 0 && <Text color={COLOR.meta}>  ·  {formatBytes(bytes)} streamed</Text>}
           </Text>
         ) : status === 'done' ? (
           <Text>
-            <Text color="green">✓</Text>
-            <Text color="gray"> complete in {seconds}s{bytes > 0 ? ` · ${formatBytes(bytes)}` : ''}</Text>
+            <Text color={COLOR.up} bold>✔</Text>
+            <Text color={COLOR.body}>  done in {seconds}s</Text>
+            {bytes > 0 && <Text color={COLOR.meta}>  ·  {formatBytes(bytes)}</Text>}
           </Text>
         ) : status === 'error' ? (
-          <Text color="red">✗ failed</Text>
+          <Text color={COLOR.down} bold>✖ failed</Text>
         ) : null}
       </Box>
 
@@ -536,15 +559,17 @@ function QueryCard({
 
       {intermediateSteps.length > 0 && (
         <Box marginTop={1} flexDirection="column">
-          <Text bold>
-            <Gradient colors={['#fbbf24', '#f97316']}>intermediate steps</Gradient>
-          </Text>
-          <Box borderStyle="round" borderColor="yellow" paddingX={1} flexDirection="column">
+          <Box flexDirection="row" alignItems="center" marginBottom={0}>
+            <Text bold>
+              <Gradient colors={STEPS_GRADIENT}>⚡ STEPS</Gradient>
+            </Text>
+          </Box>
+          <Box borderStyle="round" borderColor={COLOR.busyBorder} paddingX={1} flexDirection="column">
             {intermediateSteps.map(step => (
               <Text key={step.id}>
-                <Text color={step.color}>{step.marker}</Text>
-                <Text color="gray"> {step.label}</Text>
-                <Text> {step.detail}</Text>
+                <Text color={step.color} bold>{step.marker}</Text>
+                <Text color={COLOR.sectionHead}>  {step.label}</Text>
+                <Text color={COLOR.body}>  {step.detail}</Text>
               </Text>
             ))}
           </Box>
@@ -554,18 +579,18 @@ function QueryCard({
       {debugEvents && (
         <Box marginTop={1} flexDirection="column">
           <Text bold>
-            <Gradient colors={['#22d3ee', '#06b6d4']}>sse event console</Gradient>
+            <Gradient colors={CONSOLE_GRADIENT}>⬡ SSE CONSOLE</Gradient>
           </Text>
-          <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="column">
+          <Box borderStyle="round" borderColor={COLOR.divider} paddingX={1} flexDirection="column">
             {eventConsole.length > 0 ? (
               eventConsole.map(item => (
                 <Text key={item.id}>
-                  <Text color="cyan">{item.event}</Text>
-                  <Text color="gray"> {item.summary}</Text>
+                  <Text color={COLOR.sectionHead} bold>{item.event}</Text>
+                  <Text color={COLOR.body}>  {item.summary}</Text>
                 </Text>
               ))
             ) : (
-              <Text color="gray">waiting for first SSE event from backend</Text>
+              <Text color={COLOR.meta}>waiting for first SSE event from backend…</Text>
             )}
           </Box>
         </Box>
@@ -592,7 +617,7 @@ function Panel({title, borderColor, children}) {
   return (
     <Box borderStyle="round" borderColor={borderColor} flexDirection="column" paddingX={1}>
       <Text color={borderColor} bold>
-        {title}
+        ◈ {title.toUpperCase()}
       </Text>
       {children}
     </Box>

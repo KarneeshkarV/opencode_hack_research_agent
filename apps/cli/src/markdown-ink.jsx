@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
-import {Box, Text} from 'ink';
+import { Box, Text } from 'ink';
 import Gradient from 'ink-gradient';
 
-import {AGENT_GRADIENT, AGENT_H3_GRADIENT} from './theme.js';
+import { AGENT_GRADIENT, AGENT_H3_GRADIENT, COLOR } from './theme.js';
 
 function parseMarkdownBlocks(text) {
   if (!text) return [];
@@ -19,21 +19,21 @@ function parseMarkdownBlocks(text) {
     }
 
     if (/^---+$/u.test(trimmed)) {
-      blocks.push({type: 'hr'});
+      blocks.push({ type: 'hr' });
       i++;
       continue;
     }
 
     const h2 = /^##\s+(.+?)\s*$/.exec(raw);
     if (h2) {
-      blocks.push({type: 'h2', text: h2[1].trim()});
+      blocks.push({ type: 'h2', text: h2[1].trim() });
       i++;
       continue;
     }
 
     const h3 = /^###\s+(.+?)\s*$/.exec(raw);
     if (h3) {
-      blocks.push({type: 'h3', text: h3[1].trim()});
+      blocks.push({ type: 'h3', text: h3[1].trim() });
       i++;
       continue;
     }
@@ -48,21 +48,21 @@ function parseMarkdownBlocks(text) {
         items.push(m[1]);
         i++;
       }
-      blocks.push({type: 'ul', items});
+      blocks.push({ type: 'ul', items });
       continue;
     }
 
     const ol = /^\s*(\d+)\.\s+(.+)$/.exec(raw);
     if (ol) {
-      const items = [{n: ol[1], text: ol[2]}];
+      const items = [{ n: ol[1], text: ol[2] }];
       i++;
       while (i < lines.length) {
         const m2 = /^\s*(\d+)\.\s+(.+)$/.exec(lines[i]);
         if (!m2) break;
-        items.push({n: m2[1], text: m2[2]});
+        items.push({ n: m2[1], text: m2[2] });
         i++;
       }
-      blocks.push({type: 'ol', items});
+      blocks.push({ type: 'ol', items });
       continue;
     }
 
@@ -79,7 +79,7 @@ function parseMarkdownBlocks(text) {
       para.push(next);
       i++;
     }
-    blocks.push({type: 'p', lines: para});
+    blocks.push({ type: 'p', lines: para });
   }
 
   return blocks;
@@ -90,7 +90,7 @@ function renderInline(s) {
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       return (
-        <Text key={i} bold color="white">
+        <Text key={i} bold color={COLOR.text}>
           {part.slice(2, -2)}
         </Text>
       );
@@ -102,13 +102,13 @@ function renderInline(s) {
       !part.startsWith('**')
     ) {
       return (
-        <Text key={i} italic color="gray">
+        <Text key={i} italic color={COLOR.meta}>
           {part.slice(1, -1)}
         </Text>
       );
     }
     return (
-      <Text key={i} color="gray">
+      <Text key={i} color={COLOR.body}>
         {part}
       </Text>
     );
@@ -119,13 +119,13 @@ function paragraphBody(lines) {
   return lines.map(l => l.trim()).join(' ');
 }
 
-function Block({block}) {
+function Block({ block }) {
   switch (block.type) {
     case 'hr':
       return (
         <Box marginY={0}>
-          <Text color="gray" dimColor>
-            {'─'.repeat(42)}
+          <Text color={COLOR.divider} dimColor>
+            {'─'.repeat(20)}
           </Text>
         </Box>
       );
@@ -155,7 +155,7 @@ function Block({block}) {
           {block.items.map((item, j) => (
             <Box key={j} flexDirection="row">
               <Text>
-                <Gradient colors={AGENT_GRADIENT}>• </Gradient>
+                <Gradient colors={AGENT_GRADIENT}>◆ </Gradient>
               </Text>
               <Text wrap="wrap">{renderInline(item)}</Text>
             </Box>
@@ -167,7 +167,7 @@ function Block({block}) {
         <Box flexDirection="column" marginTop={0}>
           {block.items.map((item, j) => (
             <Box key={j} flexDirection="row">
-              <Text color="magenta" dimColor>
+              <Text color={COLOR.mauve} bold>
                 {item.n}.{' '}
               </Text>
               <Text wrap="wrap">{renderInline(item.text)}</Text>

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Box, Text } from 'ink';
+import { COLOR } from './theme.js';
 
 function fmtPriceTick(p) {
   if (!Number.isFinite(p)) return '—';
@@ -102,7 +103,8 @@ export function TimeSeriesSeparatedBarChart({ closes, timestamps, width, height 
       const up = i > 0 ? pr >= sc[i - 1] : true;
       bars.push({
         heightRows,
-        backgroundColor: up ? 'green' : 'red'
+        // Catppuccin Mocha: Green for up, Red for down
+        backgroundColor: up ? COLOR.up : COLOR.down
       });
     }
 
@@ -128,12 +130,12 @@ export function TimeSeriesSeparatedBarChart({ closes, timestamps, width, height 
       <Box flexDirection="row" alignItems="flex-start">
         <Box flexDirection="column" width={chart.axisW} gap={0} style={{ gap: 0 }}>
           {Array.from({ length: chart.plotH }, (_, r) => (
-            <Text key={r} color="gray">
+            <Text key={r} color={COLOR.axis}>
               {leftGutterRow(r, chart.plotH, chart.yMin, chart.yMax)}
             </Text>
           ))}
         </Box>
-        <Text color="green">│</Text>
+        <Text color={COLOR.divider}>│</Text>
         <Box
           flexDirection="row"
           alignItems="flex-end"
@@ -143,7 +145,7 @@ export function TimeSeriesSeparatedBarChart({ closes, timestamps, width, height 
           style={{ gap: 0 }}
         >
           {chart.bars.length === 0 ? (
-            <Text color="gray" dimColor>
+            <Text color={COLOR.meta} dimColor>
               (no series)
             </Text>
           ) : (
@@ -166,7 +168,7 @@ export function TimeSeriesSeparatedBarChart({ closes, timestamps, width, height 
         </Box>
       </Box>
       <Box marginLeft={chart.axisW + 1} width={chart.plotW}>
-        <Text color="gray">
+        <Text color={COLOR.divider}>
           {'└'}
           {'─'.repeat(Math.max(0, chart.plotW - 2))}
           {'┘'}
@@ -174,22 +176,22 @@ export function TimeSeriesSeparatedBarChart({ closes, timestamps, width, height 
       </Box>
       <Box marginLeft={chart.axisW + 1} width={chart.plotW} flexDirection="column">
         <Box flexDirection="row" justifyContent="space-between">
-          <Text color="gray" dimColor>
+          <Text color={COLOR.axis} dimColor>
             {chart.t0}
           </Text>
           {chart.t1 ? (
-            <Text color="gray" dimColor>
+            <Text color={COLOR.axis} dimColor>
               {chart.t1}
             </Text>
           ) : (
             <Text> </Text>
           )}
-          <Text color="gray" dimColor>
+          <Text color={COLOR.axis} dimColor>
             {chart.t2}
           </Text>
         </Box>
-        <Text color="gray" dimColor>
-          time (x) · eval / price (y)
+        <Text color={COLOR.meta} dimColor>
+          time →  ·  price ↑  ·  neon aurora bars
         </Text>
       </Box>
     </Box>
@@ -218,11 +220,11 @@ export function closesToCandles(closes) {
 
 function charColor(ch, candle) {
   const up = candle.c >= candle.o;
-  if (ch === ' ') return 'gray';
-  if (ch === '█') return up ? 'green' : 'red';
-  if (ch === '▓') return 'red';
-  if (ch === '│' || ch === '┃') return up ? 'green' : 'red';
-  return 'gray';
+  if (ch === ' ') return COLOR.meta;
+  if (ch === '█') return up ? COLOR.up : COLOR.down;
+  if (ch === '▓') return COLOR.down;
+  if (ch === '│' || ch === '┃') return up ? COLOR.up : COLOR.down;
+  return COLOR.meta;
 }
 
 /**
