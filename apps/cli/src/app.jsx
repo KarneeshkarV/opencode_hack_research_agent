@@ -75,35 +75,12 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
     }
   }, [status]);
 
-  useInput((input, key) => {
-    if (query || isBusy) {
-      return;
-    }
-
-    if (key.ctrl && input === 'l') {
-      setSubmittedQuery(null);
-      setError(null);
-      setStatus('idle');
-      setElapsed(0);
-      bufferRef.current = '';
-      sseBufferRef.current = '';
-      bytesRef.current = 0;
-      setBytes(0);
-      setFinalOutput('');
-      setIntermediateSteps([]);
-      setEventConsole([]);
-      setLogError(null);
-      setActiveLogFile(null);
-      return;
-    }
-
-    if (key.return) {
-      const nextQuery = draft.trim();
-      if (nextQuery.length > 0) {
+  useInput(
+    (input, key) => {
+      if (key.ctrl && input === 'l') {
+        setSubmittedQuery(null);
         setError(null);
-        setStatus('connecting');
-        setSubmittedQuery(nextQuery);
-        setDraft('');
+        setStatus('idle');
         setElapsed(0);
         bufferRef.current = '';
         sseBufferRef.current = '';
@@ -114,19 +91,41 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
         setEventConsole([]);
         setLogError(null);
         setActiveLogFile(null);
+        return;
       }
-      return;
-    }
 
-    if (key.backspace || key.delete) {
-      setDraft(current => current.slice(0, -1));
-      return;
-    }
+      if (key.return) {
+        const nextQuery = draft.trim();
+        if (nextQuery.length > 0) {
+          setError(null);
+          setStatus('connecting');
+          setSubmittedQuery(nextQuery);
+          setDraft('');
+          setElapsed(0);
+          bufferRef.current = '';
+          sseBufferRef.current = '';
+          bytesRef.current = 0;
+          setBytes(0);
+          setFinalOutput('');
+          setIntermediateSteps([]);
+          setEventConsole([]);
+          setLogError(null);
+          setActiveLogFile(null);
+        }
+        return;
+      }
 
-    if (input) {
-      setDraft(current => current + input);
-    }
-  });
+      if (key.backspace || key.delete) {
+        setDraft(current => current.slice(0, -1));
+        return;
+      }
+
+      if (input) {
+        setDraft(current => current + input);
+      }
+    },
+    {isActive: !query && !isBusy}
+  );
 
   useEffect(() => {
     if (!isBusy) return;

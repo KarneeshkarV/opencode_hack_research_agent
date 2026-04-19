@@ -1,10 +1,13 @@
 import {readdir, readFile} from 'node:fs/promises';
+import {execFile} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
+import {promisify} from 'node:util';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const DEFAULT_TICKER_MODEL = 'gpt-5.4-nano';
 const MAX_TICKERS = 5;
+const execFileAsync = promisify(execFile);
 
 const TICKER_MAP = {
   apple: 'AAPL',
@@ -410,7 +413,7 @@ export async function resolveTickerSector(
     };
   }
 
-  const yahooInfo = await fetchYahooSector(ticker, fetchImpl);
+  const yahooInfo = await fetchYahooSector(ticker, {fetchImpl, repoRoot, env});
   return {
     sector: yahooInfo.sector || '',
     industry: yahooInfo.industry || '',
@@ -516,7 +519,7 @@ function buildMarketContext({primaryTicker, resolution, sectorInfo, memoryPeers}
   };
 }
 
-async function fetchYahooSector(ticker, fetchImpl) {
+async function fetchYahooSector(ticker, {fetchImpl, repoRoot, env}) {
   const clean = cleanTicker(ticker);
   if (!clean) return {};
   const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
@@ -538,6 +541,34 @@ async function fetchYahooSector(ticker, fetchImpl) {
     return {
       sector: profile?.sector || '',
       industry: profile?.industry || ''
+    };
+  } catch {
+    return fetchYfinanceSector(clean, {repoRoot, env});
+  }
+}
+
+async function fetchYfinanceSector(ticker, {repoRoot, env}) {
+  if (env.RESEARCH_AGENT_DISABLE_PYTHON_YFINANCE === 'true') {
+    return {};
+  }
+
+  const code = [
+    'import json, sys, yfinance as yf',
+    'info = yf.Ticker(sys.argv[1]).info or {}',
+    'print(json.dumps({"sector": info.get("sector") or "", "industry": info.get("industry") or ""}))'
+  ].join('; ');
+
+  try {
+    const {stdout} = await execFileAsync('uv', ['run', 'python', '-c', code, ticker], {
+      cwd: join(repoRoot, 'apps/api'),
+      env: {...process.env, ...env},
+      timeout: 8000,
+      maxBuffer: 1024 * 1024
+    });
+    const parsed = JSON.parse(stdout.trim() || '{}');
+    return {
+      sector: typeof parsed.sector === 'string' ? parsed.sector : '',
+      industry: typeof parsed.industry === 'string' ? parsed.industry : ''
     };
   } catch {
     return {};
