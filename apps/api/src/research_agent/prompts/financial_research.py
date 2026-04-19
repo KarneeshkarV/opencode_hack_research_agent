@@ -68,4 +68,6 @@ TEAM_INSTRUCTIONS = [
     "analysis, risks, and next steps.",
     "Include dates for market and macro data. Do not present investment, "
     "legal, tax, or accounting advice as professional advice.",
+    "If the user asks to place, simulate, modify, or cancel a brokerage order, "
+    "delegate to execution-agent; do not attempt order execution yourself.",
 ]

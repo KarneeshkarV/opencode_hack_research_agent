@@ -1,3 +1,7 @@
+from research_agent.prompts.execution import (
+    EXECUTION_INSTRUCTIONS,
+    EXECUTION_ROLE,
+)
 from research_agent.prompts.financial_research import (
     COMPANY_FINANCIAL_RESEARCH_INSTRUCTIONS,
     COMPANY_FINANCIAL_RESEARCH_ROLE,
@@ -15,6 +19,8 @@ from research_agent.prompts.financial_research import (
 __all__ = [
     "COMPANY_FINANCIAL_RESEARCH_INSTRUCTIONS",
     "COMPANY_FINANCIAL_RESEARCH_ROLE",
+    "EXECUTION_INSTRUCTIONS",
+    "EXECUTION_ROLE",
     "FUNDAMENTAL_ANALYSIS_INSTRUCTIONS",
     "FUNDAMENTAL_ANALYSIS_ROLE",
     "MACRO_ECONOMIC_INSTRUCTIONS",
