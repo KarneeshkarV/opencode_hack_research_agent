@@ -58,8 +58,18 @@ bun run dev
 The dev runner keeps the terminal focused on the Ink UI. API logs are written to:
 
 ```txt
-tmp/logs/api.log
+tmp/logs/api-<timestamp>-<pid>.log
 ```
+
+The latest API run is also available at `tmp/logs/api.latest.log`.
+
+Each CLI research run writes parsed SSE events to a separate JSONL file:
+
+```txt
+tmp/logs/research-agent-sse-events-<timestamp>-<pid>-<run>.jsonl
+```
+
+The latest CLI run log is also available at `tmp/logs/research-agent-sse-events.latest.jsonl`.
 
 ## Commands
 

@@ -1,4 +1,4 @@
-import {appendFileSync, mkdirSync} from 'node:fs';
+import {appendFileSync, mkdirSync, symlinkSync, unlinkSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
 import React, {useEffect, useMemo, useRef, useState} from 'react';
@@ -8,6 +8,8 @@ import {runResearchStream} from './api/client.js';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const DEFAULT_SSE_LOG_DIR = join(REPO_ROOT, 'tmp/logs');
+const LATEST_SSE_LOG = join(DEFAULT_SSE_LOG_DIR, 'research-agent-sse-events.latest.jsonl');
 
 export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
   const {exit} = useApp();
@@ -23,8 +25,10 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
   const [logError, setLogError] = useState(null);
   const bufferRef = useRef('');
   const sseBufferRef = useRef('');
+  const runCounterRef = useRef(0);
   const bytesRef = useRef(0);
   const [bytes, setBytes] = useState(0);
+  const [activeLogFile, setActiveLogFile] = useState(null);
 
   const resolvedApiUrl = useMemo(
     () =>
@@ -34,13 +38,15 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
     [apiUrl]
   );
 
-  const resolvedLogFile = useMemo(
-    () =>
-      logFile ??
-      process.env.RESEARCH_AGENT_SSE_LOG_FILE ??
-      join(REPO_ROOT, 'tmp/research-agent-sse-events.jsonl'),
+  const configuredLogFile = useMemo(
+    () => logFile ?? process.env.RESEARCH_AGENT_SSE_LOG_FILE ?? null,
     [logFile]
   );
+
+  const logFileLabel =
+    activeLogFile ??
+    configuredLogFile ??
+    join(DEFAULT_SSE_LOG_DIR, 'research-agent-sse-events-<timestamp>-<pid>-<run>.jsonl');
 
   const isBusy = status === 'running' || status === 'connecting';
 
@@ -84,6 +90,7 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
       setIntermediateSteps([]);
       setEventConsole([]);
       setLogError(null);
+      setActiveLogFile(null);
       return;
     }
 
@@ -103,6 +110,7 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
         setIntermediateSteps([]);
         setEventConsole([]);
         setLogError(null);
+        setActiveLogFile(null);
       }
       return;
     }
@@ -132,9 +140,14 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
     let cancelled = false;
 
     async function run() {
+      const currentLogFile =
+        configuredLogFile ?? buildDefaultSseLogFile(++runCounterRef.current);
+      setActiveLogFile(currentLogFile);
+      pointLatestSseLog(currentLogFile, setLogError);
+
       try {
         setStatus('running');
-        logSseRecord(resolvedLogFile, {
+        logSseRecord(currentLogFile, {
           type: 'run_start',
           query: submittedQuery,
           apiUrl: resolvedApiUrl,
@@ -153,7 +166,7 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
           sseBufferRef.current = parsed.remainder;
 
           for (const event of parsed.events) {
-            logSseRecord(resolvedLogFile, {
+            logSseRecord(currentLogFile, {
               type: 'sse_event',
               query: submittedQuery,
               event
@@ -176,7 +189,7 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
 
         if (cancelled) return;
         setFinalOutput(extractFinalResponse(bufferRef.current));
-        logSseRecord(resolvedLogFile, {
+        logSseRecord(currentLogFile, {
           type: 'run_end',
           query: submittedQuery,
           status: 'done'
@@ -187,7 +200,7 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
         }
       } catch (caught) {
         if (cancelled) return;
-        logSseRecord(resolvedLogFile, {
+        logSseRecord(currentLogFile, {
           type: 'run_end',
           query: submittedQuery,
           status: 'error',
@@ -206,7 +219,7 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
     return () => {
       cancelled = true;
     };
-  }, [exit, query, resolvedApiUrl, resolvedLogFile, sessionId, submittedQuery]);
+  }, [configuredLogFile, exit, query, resolvedApiUrl, sessionId, submittedQuery]);
 
   const spinner = SPINNER_FRAMES[tick % SPINNER_FRAMES.length];
   const seconds = (elapsed / 10).toFixed(1);
@@ -218,7 +231,7 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
         sessionId={sessionId}
         statusLabel={statusLabel}
         statusColor={statusColor}
-        logFile={resolvedLogFile}
+        logFile={logFileLabel}
       />
 
       <Box marginTop={1} flexDirection="column">
@@ -497,6 +510,31 @@ function logSseRecord(logFile, record, onError) {
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : String(caught);
     onError(`Could not write SSE log to ${logFile}: ${message}`);
+  }
+}
+
+function buildDefaultSseLogFile(runNumber) {
+  const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+  return join(
+    DEFAULT_SSE_LOG_DIR,
+    `research-agent-sse-events-${timestamp}-${process.pid}-${runNumber}.jsonl`
+  );
+}
+
+function pointLatestSseLog(logFile, onError) {
+  try {
+    mkdirSync(dirname(LATEST_SSE_LOG), {recursive: true});
+    try {
+      unlinkSync(LATEST_SSE_LOG);
+    } catch (caught) {
+      if (!caught || caught.code !== 'ENOENT') {
+        throw caught;
+      }
+    }
+    symlinkSync(logFile, LATEST_SSE_LOG);
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : String(caught);
+    onError(`Could not update latest SSE log link ${LATEST_SSE_LOG}: ${message}`);
   }
 }
 

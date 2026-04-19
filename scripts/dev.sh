@@ -5,9 +5,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_HOST="${AGENT_OS_HOST:-localhost}"
 API_PORT="${AGENT_OS_PORT:-7777}"
 LOG_DIR="$ROOT_DIR/tmp/logs"
-API_LOG="$LOG_DIR/api.log"
+RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
+API_LOG="$LOG_DIR/api-$RUN_ID.log"
+LATEST_LOG="$LOG_DIR/api.latest.log"
 
 mkdir -p "$LOG_DIR"
+ln -sfn "$(basename "$API_LOG")" "$LATEST_LOG"
 
 cd "$ROOT_DIR/apps/api"
 uv run uvicorn research_agent.main:app \

@@ -42,7 +42,7 @@ format:
 check: lint api-test
 
 logs:
-    tail -f tmp/logs/api.log
+    @latest="tmp/logs/api.latest.log"; if [ ! -e "$latest" ]; then latest="$(ls -t tmp/logs/api-*.log tmp/logs/api.log 2>/dev/null | head -n 1)"; fi; if [ -n "$latest" ]; then tail -f "$latest"; else echo "No logs found in tmp/logs"; exit 1; fi
 
 clean:
     rm -rf node_modules apps/cli/node_modules apps/cli/dist
