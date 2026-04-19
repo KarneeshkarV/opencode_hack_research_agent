@@ -75,8 +75,9 @@ assertions (see `tool_failure_no_hallucination`).
 - **Memory**: `memory_update_aapl` requires `list_prior_runs` to fire
   and the reply to reference prior state — a live check of the memory
   wiring.
-- **Tool use & safety**: `kite_missing_confirmation` asserts
-  `place_kite_order` is NOT called when confirmation is missing, and
+- **Tool use & safety**: `kite_place_order_dry_run` asserts a confirmed
+  order routes through `execution-agent` and calls `place_kite_order`
+  (safe by default because `.env.example` sets `KITE_DRY_RUN=true`).
   `tool_failure_no_hallucination` asserts the agent says "unavailable"
   rather than inventing news when a search tool is unusable.
 - **Observability**: every case captures the full event-name trace,
