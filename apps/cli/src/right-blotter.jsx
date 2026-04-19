@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Box, Text } from 'ink';
 import Gradient from 'ink-gradient';
 
@@ -101,6 +101,122 @@ function CostCard({ costSummary }) {
         )}
       </Row>
     </BlotterCard>
+  );
+}
+
+/**
+ * MarketPulse
+ * ───────────
+ * A purely decorative bouncing-bars animation that sits below the COST card.
+ * No text, no labels, no title — just a tall multi-row bar chart where each
+ * column bounces up and down on its own sine-wave phase, like a big music
+ * equalizer. Has NO dependency on prompt/market data.
+ *
+ *   • BAR_COUNT columns spread across the panel, each with its own phase
+ *     offset so the row ripples like a wave traveling across.
+ *   • BAR_ROWS rows tall — each row prints the portion of the bar that
+ *     belongs at that vertical level (full block if the bar is taller
+ *     than this row, partial block at the top, space if the bar is
+ *     shorter than this row).
+ *   • Each column has a pastel rainbow color; the top of each bar is
+ *     rendered bold for a soft glow.
+ *
+ * Pure-CPU, no deps — ink re-renders on a 100 ms timer via setState.
+ */
+const BAR_PARTIAL = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█']; // 8 partial fills
+const BAR_COUNT = 22; // columns (width of the chart)
+const BAR_ROWS = 12; // vertical rows — each row = 8 sub-levels, so total height = 96 sub-units
+const TICK_MS = 100;
+
+/** Pastel rainbow across the bars (Catppuccin-ish). Loops if BAR_COUNT > length. */
+const BAR_PALETTE = [
+  COLOR.pink,
+  COLOR.mauve,
+  COLOR.lavender,
+  COLOR.sapphire,
+  COLOR.sectionHead, // sky
+  COLOR.activeBorder, // teal
+  COLOR.up, // green
+  COLOR.yellow,
+  COLOR.busyBorder, // peach
+  COLOR.maroon,
+  COLOR.down, // red
+  COLOR.flamingo,
+  COLOR.rosewater,
+  COLOR.pink,
+  COLOR.mauve,
+  COLOR.lavender,
+  COLOR.sapphire,
+  COLOR.sectionHead,
+];
+
+function MarketPulse() {
+  // Single monotonic frame counter drives every sine wave so the whole
+  // widget moves in harmony rather than randomly.
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setFrame((f) => (f + 1) % 1_000_000);
+    }, TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  // Compute each bar's height in sub-units (0 .. BAR_ROWS * 8).
+  const maxSub = BAR_ROWS * BAR_PARTIAL.length; // e.g. 8 rows * 8 = 64
+  const heights = Array.from({ length: BAR_COUNT }, (_, i) => {
+    const t = frame * 0.18;
+    const phase = i * 0.55;
+    const wave = Math.sin(t + phase) * 0.6 + Math.sin(t * 0.5 + phase * 1.7) * 0.4;
+    // Map wave ∈ [-1, 1] → height ∈ [0, maxSub], with a little headroom
+    // so the bars visibly crest and trough.
+    return Math.round(((wave + 1) / 2) * maxSub);
+  });
+
+  // Render from top row (BAR_ROWS-1) down to bottom row (0). For each row,
+  // for each column, emit: full block, partial block, or space.
+  const rows = [];
+  for (let r = BAR_ROWS - 1; r >= 0; r--) {
+    const rowFloor = r * BAR_PARTIAL.length; // sub-units consumed by rows below
+    const rowCeil = rowFloor + BAR_PARTIAL.length; // sub-units if this row is full
+    const cells = heights.map((h, i) => {
+      const color = BAR_PALETTE[i % BAR_PALETTE.length];
+      let glyph;
+      let isTop = false;
+      if (h >= rowCeil) {
+        // Bar fully covers this row.
+        glyph = '█';
+      } else if (h > rowFloor) {
+        // Bar tops out somewhere in this row — pick the matching partial.
+        glyph = BAR_PARTIAL[h - rowFloor - 1];
+        isTop = true;
+      } else {
+        // Bar is shorter than this row — empty space (but keep width).
+        glyph = ' ';
+      }
+      return (
+        <Text key={i} color={color} bold={isTop}>
+          {' '}
+          {glyph}
+        </Text>
+      );
+    });
+    rows.push(
+      <Box key={r} flexDirection="row" justifyContent="center" width="100%">
+        {cells}
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      marginTop={1}
+      flexDirection="column"
+      alignItems="center"
+      width="100%"
+    >
+      {rows}
+    </Box>
   );
 }
 
@@ -254,6 +370,9 @@ export function RightBlotter({ phase, symbol, costSummary }) {
 
       {/* ── COST ── */}
       <CostCard costSummary={costSummary} />
+
+      {/* ── MARKET PULSE (decorative animation, not tied to data) ── */}
+      <MarketPulse />
     </Box>
   );
 }
