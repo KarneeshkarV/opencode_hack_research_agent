@@ -18,3 +18,6 @@ tmp/
 *.sqlite
 *.sqlite3
 *.egg-info/
+
+apps/api/company/*/
+!apps/api/company/.gitkeep

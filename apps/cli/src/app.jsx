@@ -12,7 +12,7 @@ const DEFAULT_SSE_LOG_DIR = join(REPO_ROOT, 'tmp/logs');
 const LATEST_SSE_LOG = join(DEFAULT_SSE_LOG_DIR, 'research-agent-sse-events.latest.jsonl');
 const LOG_SESSION_ID = `${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${process.pid}`;
 
-export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
+export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = false}) {
   const {exit} = useApp();
   const [draft, setDraft] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState(query ?? null);
@@ -159,7 +159,8 @@ export function App({query, apiUrl, sessionId, logFile, debugEvents = false}) {
 
         for await (const chunk of runResearchStream(submittedQuery, {
           apiUrl: resolvedApiUrl,
-          sessionId
+          sessionId,
+          ticker
         })) {
           if (cancelled) return;
           bufferRef.current += chunk;

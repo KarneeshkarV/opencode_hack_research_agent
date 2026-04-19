@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     exa_api_key: str | None = None
     openai_api_key: str | None = None
     external_tool_timeout_seconds: int = 25
+    company_memory_dir: Path = API_DIR / "company"
 
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
