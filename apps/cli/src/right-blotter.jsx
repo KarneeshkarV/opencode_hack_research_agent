@@ -57,6 +57,72 @@ function sumOrderCharge(orders, key) {
   return orders.reduce((acc, o) => acc + Number(o?.charges?.[key] ?? 0), 0);
 }
 
+function fmtInr(n) {
+  try {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 2
+    }).format(n);
+  } catch {
+    return `₹${Number(n).toFixed(2)}`;
+  }
+}
+
+/** Derive a net position from the real orders captured by the backend.
+ *  BUY adds qty (weighted into avg cost), SELL reduces qty. */
+function derivePositionFromOrders(orders) {
+  if (!Array.isArray(orders) || orders.length === 0) return null;
+
+  const bySymbol = new Map();
+  for (const o of orders) {
+    const sym = o?.tradingsymbol;
+    if (!sym) continue;
+    const qty = Number(o?.quantity ?? 0);
+    const px = Number(o?.price ?? 0);
+    const side = String(o?.transaction_type ?? '').toUpperCase();
+    if (!qty || !px) continue;
+
+    const entry = bySymbol.get(sym) ?? {
+      symbol: sym,
+      exchange: o?.exchange ?? null,
+      buyQty: 0,
+      buyCost: 0,
+      sellQty: 0,
+      lastPx: px
+    };
+    entry.lastPx = px;
+    if (side === 'BUY') {
+      entry.buyQty += qty;
+      entry.buyCost += qty * px;
+    } else if (side === 'SELL') {
+      entry.sellQty += qty;
+    }
+    bySymbol.set(sym, entry);
+  }
+
+  // Pick the symbol with the largest net position; most sessions have one.
+  let best = null;
+  for (const entry of bySymbol.values()) {
+    const netQty = entry.buyQty - entry.sellQty;
+    const score = Math.abs(netQty) || entry.buyQty + entry.sellQty;
+    if (!best || score > best.score) {
+      best = { entry, netQty, score };
+    }
+  }
+  if (!best) return null;
+
+  const { entry, netQty } = best;
+  const avgCost = entry.buyQty > 0 ? entry.buyCost / entry.buyQty : 0;
+  return {
+    symbol: entry.symbol,
+    exchange: entry.exchange,
+    qty: netQty,
+    avgCost,
+    lastPx: entry.lastPx
+  };
+}
+
 function CostCard({ costSummary }) {
   // No response yet from /sessions/{id}/cost
   if (!costSummary) {
@@ -148,16 +214,24 @@ export function RightBlotter({ phase, symbol, costSummary }) {
   }
 
   const px = phase.regularMarketPrice;
-  const qty = 100;
-  const avg = px * (1 - phase.ret / 200 / 100);
-  const mktVal = px * qty;
+  const orders = Array.isArray(costSummary?.orders) ? costSummary.orders : [];
+  const realPosition = derivePositionFromOrders(orders);
+  // Real orders are Kite (INR). Fall back to market data for the instrument
+  // panel & metrics when no orders have been placed yet.
+  const hasPosition = realPosition !== null && realPosition.qty !== 0;
+  const qty = hasPosition ? realPosition.qty : 0;
+  const avg = hasPosition ? realPosition.avgCost : 0;
+  const posLastPx = hasPosition ? realPosition.lastPx : px;
+  const posCurrency = hasPosition ? 'INR' : phase.currency;
+  const mktVal = qty * posLastPx;
   const cost = avg * qty;
   const upnl = mktVal - cost;
   const upnlPct = cost !== 0 ? (upnl / cost) * 100 : 0;
-  const uplStr = `${upnl >= 0 ? '+' : ''}${fmt$(upnl, phase.currency)} (${upnlPct >= 0 ? '+' : ''}${upnlPct.toFixed(1)}%)`;
+  const uplStr = `${upnl >= 0 ? '+' : ''}${fmt$(upnl, posCurrency)} (${upnlPct >= 0 ? '+' : ''}${upnlPct.toFixed(1)}%)`;
   const isUp = upnl >= 0;
   const pnlColor = isUp ? COLOR.up : COLOR.down;
   const retColor = phase.ret >= 0 ? COLOR.up : COLOR.down;
+  const posSymbol = hasPosition ? realPosition.symbol : phase.symbol;
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={0}>
@@ -181,23 +255,36 @@ export function RightBlotter({ phase, symbol, costSummary }) {
       {/* ── POSITION ── */}
       <BlotterCard title="▸ POSITION" titleColor={COLOR.sectionHead}>
         <Row label="symbol">
-          <Text color={COLOR.text} bold>{phase.symbol}</Text>
+          <Text color={COLOR.text} bold>{posSymbol}</Text>
         </Row>
-        <Row label="qty">
-          <Text color={COLOR.body}>{qty} sh</Text>
-        </Row>
-        <Row label="avg cost">
-          <Text color={COLOR.body}>{fmt$(avg, phase.currency)}</Text>
-        </Row>
-        <Row label="last px">
-          <Text color={COLOR.text} bold>{fmt$(px, phase.currency)}</Text>
-        </Row>
-        <Row label="mkt val">
-          <Text color={COLOR.body}>{fmt$(mktVal, phase.currency)}</Text>
-        </Row>
-        <Row label="unreal P&L">
-          <Text color={pnlColor} bold>{uplStr}</Text>
-        </Row>
+        {hasPosition ? (
+          <>
+            <Row label="qty">
+              <Text color={COLOR.body}>{qty} sh</Text>
+            </Row>
+            <Row label="avg cost">
+              <Text color={COLOR.body}>{fmt$(avg, posCurrency)}</Text>
+            </Row>
+            <Row label="last px">
+              <Text color={COLOR.text} bold>{fmt$(posLastPx, posCurrency)}</Text>
+            </Row>
+            <Row label="mkt val">
+              <Text color={COLOR.body}>{fmt$(mktVal, posCurrency)}</Text>
+            </Row>
+            <Row label="unreal P&L">
+              <Text color={pnlColor} bold>{uplStr}</Text>
+            </Row>
+          </>
+        ) : (
+          <>
+            <Row label="qty">
+              <Text color={COLOR.meta} dimColor>no position</Text>
+            </Row>
+            <Row label="last px">
+              <Text color={COLOR.text} bold>{fmt$(px, phase.currency)}</Text>
+            </Row>
+          </>
+        )}
       </BlotterCard>
 
       {/* ── METRICS ── */}
@@ -209,10 +296,14 @@ export function RightBlotter({ phase, symbol, costSummary }) {
           </Text>
         </Row>
         <Row label="vs avg $">
-          <Text color={pnlColor} bold>
-            {upnl >= 0 ? '+' : ''}
-            {fmt$(upnl, phase.currency)}
-          </Text>
+          {hasPosition ? (
+            <Text color={pnlColor} bold>
+              {upnl >= 0 ? '+' : ''}
+              {fmt$(upnl, posCurrency)}
+            </Text>
+          ) : (
+            <Text color={COLOR.meta} dimColor>—</Text>
+          )}
         </Row>
         <Row label="sparkline">
           <Text color={COLOR.body}>{phase.sparkline ?? '—'}</Text>
@@ -221,16 +312,26 @@ export function RightBlotter({ phase, symbol, costSummary }) {
 
       {/* ── ORDERS ── */}
       <BlotterCard title="▸ ORDERS" titleColor={COLOR.busyBorder}>
-        <Box flexDirection="row">
-          <Text color={COLOR.up} bold>BUY  </Text>
-          <Text color={COLOR.body}>25 @ {fmt$(px * 0.985, phase.currency)}</Text>
-          <Text color={COLOR.meta}> DAY</Text>
-        </Box>
-        <Box flexDirection="row">
-          <Text color={COLOR.down} bold>SELL </Text>
-          <Text color={COLOR.body}>10 @ {fmt$(px * 1.02, phase.currency)}</Text>
-          <Text color={COLOR.meta}> GTC</Text>
-        </Box>
+        {orders.length === 0 ? (
+          <Text color={COLOR.meta} dimColor>no orders placed this session</Text>
+        ) : (
+          orders.slice(-4).map((o, i) => {
+            const side = String(o.transaction_type ?? '').toUpperCase();
+            const isBuy = side === 'BUY';
+            const tag = o.dry_run ? 'DRY' : (o.product ?? '').toUpperCase() || 'LIVE';
+            return (
+              <Box key={o.order_id ?? `${side}-${i}`} flexDirection="row">
+                <Text color={isBuy ? COLOR.up : COLOR.down} bold>
+                  {isBuy ? 'BUY  ' : 'SELL '}
+                </Text>
+                <Text color={COLOR.body}>
+                  {o.quantity} @ {fmtInr(Number(o.price ?? 0))}
+                </Text>
+                <Text color={COLOR.meta}> {tag}</Text>
+              </Box>
+            );
+          })
+        )}
       </BlotterCard>
 
       {/* ── INSTRUMENT ── */}

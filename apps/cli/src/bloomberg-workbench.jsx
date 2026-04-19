@@ -18,7 +18,7 @@ function useSplitWidths() {
   const inner = usable - gap;
   const leftW = Math.floor(inner * 0.6);
   const rightW = inner - leftW;
-  const workbenchH = Math.max(32, Math.min(rows - 2, 72));
+  const workbenchH = Math.max(12, Math.min(rows - 4, 72));
   return { cols, rows, leftW, rightW, chartInnerW: Math.max(24, leftW - 4), workbenchH };
 }
 
@@ -58,7 +58,7 @@ function SectionLabel({ gradient: gradColors, icon, label, right }) {
   );
 }
 
-export function BloombergWorkbench({
+function BloombergWorkbenchInner({
   assistantMarkdown,
   chatTurns,
   chatScroll = 0,
@@ -207,3 +207,5 @@ export function BloombergWorkbench({
     </Box>
   );
 }
+
+export const BloombergWorkbench = React.memo(BloombergWorkbenchInner);

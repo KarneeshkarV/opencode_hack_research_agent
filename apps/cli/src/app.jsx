@@ -57,6 +57,7 @@ export function App({
   const runCounterRef = useRef(0);
   const sessionLogFileRef = useRef(null);
   const bytesRef = useRef(0);
+  const lastBytesFlushRef = useRef(0);
   const [bytes, setBytes] = useState(0);
   const [activeLogFile, setActiveLogFile] = useState(null);
   const [snapshotFinished, setSnapshotFinished] = useState(false);
@@ -197,7 +198,7 @@ export function App({
     const id = setInterval(() => {
       setTick(t => t + 1);
       setElapsed(e => e + 1);
-    }, 100);
+    }, 200);
     return () => clearInterval(id);
   }, [isBusy]);
 
@@ -284,7 +285,11 @@ export function App({
           if (cancelled) return;
           bufferRef.current += chunk;
           bytesRef.current += chunk.length;
-          setBytes(bytesRef.current);
+          const nowMs = Date.now();
+          if (nowMs - lastBytesFlushRef.current > 250) {
+            lastBytesFlushRef.current = nowMs;
+            setBytes(bytesRef.current);
+          }
           const parsed = parseSseEvents(sseBufferRef.current + chunk);
           sseBufferRef.current = parsed.remainder;
 
@@ -314,6 +319,7 @@ export function App({
         }
 
         if (cancelled) return;
+        setBytes(bytesRef.current);
         const assistant = extractFinalResponse(bufferRef.current);
         setChatTurns(prev => [...prev, {user: userPrompt, assistant}]);
         if (useReplay) {
@@ -383,7 +389,7 @@ export function App({
   ]);
 
   const spinner = SPINNER_FRAMES[tick % SPINNER_FRAMES.length];
-  const seconds = (elapsed / 10).toFixed(1);
+  const seconds = (elapsed / 5).toFixed(1);
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
