@@ -10,7 +10,9 @@
   ],
   "scripts": {
     "dev": "scripts/dev.sh",
-    "cli": "cd apps/cli && bun run dev",
+    "cli": "bash scripts/cli-entry.sh",
+    "demo": "cd apps/cli && bun run demo",
+    "cli:demo": "cd apps/cli && bun run demo",
     "api:dev": "cd apps/api && uv run uvicorn research_agent.main:app --reload --host ${AGENT_OS_HOST:-localhost} --port ${AGENT_OS_PORT:-7777} --log-level warning",
     "api:test": "cd apps/api && uv run pytest",
     "api:eval": "cd apps/api && uv run python scripts/run_evals.py",

@@ -1,10 +1,16 @@
 import {appendFileSync, mkdirSync, symlinkSync, unlinkSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Box, Text, useApp, useInput} from 'ink';
+import Gradient from 'ink-gradient';
+import gradient from 'gradient-string';
 
 import {fetchSessionCost, runResearchStream} from './api/client.js';
+import {replayFromSseJsonl} from './api/replay.js';
+import {BloombergWorkbench} from './bloomberg-workbench.jsx';
+import {PromptComposer} from './prompt-composer.jsx';
+import {extractTickerHint} from './ticker-guess.js';
 import {prepareResearchMessage} from './ticker-context.js';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -13,15 +19,27 @@ const DEFAULT_SSE_LOG_DIR = join(REPO_ROOT, 'tmp/logs');
 const LATEST_SSE_LOG = join(DEFAULT_SSE_LOG_DIR, 'research-agent-sse-events.latest.jsonl');
 const LOG_SESSION_ID = `${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${process.pid}`;
 
-export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = false}) {
+export function App({
+  query,
+  initialQuery,
+  apiUrl,
+  sessionId,
+  logFile,
+  ticker,
+  debugEvents = false,
+  replayFile = null,
+  replayPacing = 'fast',
+  exitAfterRun = false
+}) {
   const {exit} = useApp();
+  const interactive = !exitAfterRun;
+  const resolvedInitialQuery = initialQuery ?? query ?? null;
   const [draft, setDraft] = useState('');
-  const [submittedQuery, setSubmittedQuery] = useState(query ?? null);
-  const [status, setStatus] = useState(query ? 'connecting' : 'idle');
+  const [submittedQuery, setSubmittedQuery] = useState(resolvedInitialQuery);
+  const [status, setStatus] = useState(resolvedInitialQuery ? 'connecting' : 'idle');
   const [error, setError] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const [tick, setTick] = useState(0);
-  const [finalOutput, setFinalOutput] = useState('');
   const [intermediateSteps, setIntermediateSteps] = useState([]);
   const [eventConsole, setEventConsole] = useState([]);
   const [logError, setLogError] = useState(null);
@@ -33,6 +51,20 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
   const bytesRef = useRef(0);
   const [bytes, setBytes] = useState(0);
   const [activeLogFile, setActiveLogFile] = useState(null);
+  const [snapshotFinished, setSnapshotFinished] = useState(false);
+  const [chatTurns, setChatTurns] = useState([]);
+  const [chatScroll, setChatScroll] = useState(0);
+  const [runNonce, setRunNonce] = useState(0);
+  const replayConsumedRef = useRef(false);
+
+  const handleSnapshotFinished = useCallback(() => {
+    setSnapshotFinished(true);
+  }, []);
+
+  useEffect(() => {
+    const max = Math.max(0, chatTurns.length - 1);
+    setChatScroll(s => Math.min(s, max));
+  }, [chatTurns.length]);
 
   const resolvedApiUrl = useMemo(
     () =>
@@ -78,59 +110,79 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
     }
   }, [status]);
 
-  useInput(
-    (input, key) => {
-      if (key.ctrl && input === 'l') {
-        setSubmittedQuery(null);
+  useInput((input, key) => {
+    if (isBusy) {
+      return;
+    }
+
+    if (key.ctrl && input === 'l') {
+      setSubmittedQuery(null);
+      setError(null);
+      setStatus('idle');
+      setElapsed(0);
+      bufferRef.current = '';
+      sseBufferRef.current = '';
+      bytesRef.current = 0;
+      setBytes(0);
+      setChatTurns([]);
+      setChatScroll(0);
+      setRunNonce(0);
+      setIntermediateSteps([]);
+      setEventConsole([]);
+      setLogError(null);
+      setActiveLogFile(null);
+      setCostSummary(null);
+      replayConsumedRef.current = false;
+      return;
+    }
+
+    if (
+      interactive &&
+      chatTurns.length > 0 &&
+      draft === '' &&
+      (input === 'j' || input === 'k')
+    ) {
+      const maxScroll = Math.max(0, chatTurns.length - 1);
+      if (input === 'j') {
+        setChatScroll(s => Math.min(maxScroll, s + 1));
+      } else {
+        setChatScroll(s => Math.max(0, s - 1));
+      }
+      return;
+    }
+
+    if (key.return) {
+      const nextQuery = draft.trim();
+      if (nextQuery.length > 0) {
         setError(null);
-        setStatus('idle');
+        setStatus('connecting');
+        setSnapshotFinished(false);
+        setRunNonce(n => n + 1);
+        setSubmittedQuery(nextQuery);
+        setDraft('');
         setElapsed(0);
         bufferRef.current = '';
         sseBufferRef.current = '';
         bytesRef.current = 0;
         setBytes(0);
-        setFinalOutput('');
         setIntermediateSteps([]);
         setEventConsole([]);
         setLogError(null);
         setActiveLogFile(null);
         setCostSummary(null);
-        return;
       }
+      return;
+    }
 
-      if (key.return) {
-        const nextQuery = draft.trim();
-        if (nextQuery.length > 0) {
-          setError(null);
-          setStatus('connecting');
-          setSubmittedQuery(nextQuery);
-          setDraft('');
-          setElapsed(0);
-          bufferRef.current = '';
-          sseBufferRef.current = '';
-          bytesRef.current = 0;
-          setBytes(0);
-          setFinalOutput('');
-          setIntermediateSteps([]);
-          setEventConsole([]);
-          setLogError(null);
-          setActiveLogFile(null);
-          setCostSummary(null);
-        }
-        return;
-      }
+    if (key.backspace || key.delete) {
+      setDraft(current => current.slice(0, -1));
+      return;
+    }
 
-      if (key.backspace || key.delete) {
-        setDraft(current => current.slice(0, -1));
-        return;
-      }
-
-      if (input) {
-        setDraft(current => current + input);
-      }
-    },
-    {isActive: !query && !isBusy}
-  );
+    if (input) {
+      setDraft(current => current + input);
+    }
+  });
 
   useEffect(() => {
     if (!isBusy) return;
@@ -142,46 +194,85 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
   }, [isBusy]);
 
   useEffect(() => {
+    if (status !== 'done' || interactive) return;
+    const hint = extractTickerHint(
+      '',
+      chatTurns.map(t => t.assistant).join('\n\n')
+    );
+    if (!hint) {
+      const t = setTimeout(() => exit(), 100);
+      return () => clearTimeout(t);
+    }
+    if (snapshotFinished) {
+      const t = setTimeout(() => exit(), 200);
+      return () => clearTimeout(t);
+    }
+    const maxWait = setTimeout(() => exit(), 30000);
+    return () => clearTimeout(maxWait);
+  }, [status, interactive, chatTurns, snapshotFinished, exit]);
+
+  useEffect(() => {
     if (!submittedQuery) return;
 
     let cancelled = false;
+    const userPrompt = submittedQuery;
 
     async function run() {
       const runNumber = ++runCounterRef.current;
-      const currentLogFile = configuredLogFile ?? getSessionLogFile(sessionLogFileRef);
-      setActiveLogFile(currentLogFile);
-      pointLatestSseLog(currentLogFile, setLogError);
+      const currentLogFile =
+        configuredLogFile ?? getSessionLogFile(sessionLogFileRef);
+      const useReplay = Boolean(replayFile && !replayConsumedRef.current);
+      const writingLog = !useReplay;
+
+      if (useReplay) {
+        setActiveLogFile(replayFile);
+      } else {
+        setActiveLogFile(currentLogFile);
+        pointLatestSseLog(currentLogFile, setLogError);
+      }
 
       try {
         setStatus('running');
-        const prepared = await prepareResearchMessage(submittedQuery, {
-          explicitTicker: ticker
-        });
 
-        if (cancelled) return;
+        // Only resolve ticker context for live (non-replay) runs; replay files
+        // already contain the original run's prepared message.
+        let prepared = null;
+        if (!useReplay) {
+          prepared = await prepareResearchMessage(userPrompt, {
+            explicitTicker: ticker
+          });
 
-        logSseRecord(currentLogFile, {
-          type: 'run_start',
-          runNumber,
-          query: submittedQuery,
-          resolvedTicker: prepared.ticker,
-          resolvedTickers: prepared.resolution?.tickers ?? [],
-          tickerResolutionSource: prepared.resolution?.source ?? null,
-          sector: prepared.sector || null,
-          memoryPeers: prepared.memoryPeers.map(peer => ({
-            ticker: peer.ticker,
-            runId: peer.runId,
-            sector: peer.sector
-          })),
-          apiUrl: resolvedApiUrl,
-          sessionId: effectiveSessionId
-        }, setLogError);
+          if (cancelled) return;
+        }
 
-        for await (const chunk of runResearchStream(prepared.message, {
-          apiUrl: resolvedApiUrl,
-          sessionId: effectiveSessionId,
-          ticker: prepared.ticker ?? ticker
-        })) {
+        if (writingLog) {
+          logSseRecord(currentLogFile, {
+            type: 'run_start',
+            runNumber,
+            query: userPrompt,
+            resolvedTicker: prepared?.ticker ?? null,
+            resolvedTickers: prepared?.resolution?.tickers ?? [],
+            tickerResolutionSource: prepared?.resolution?.source ?? null,
+            sector: prepared?.sector || null,
+            memoryPeers: (prepared?.memoryPeers ?? []).map(peer => ({
+              ticker: peer.ticker,
+              runId: peer.runId,
+              sector: peer.sector
+            })),
+            apiUrl: resolvedApiUrl,
+            sessionId: effectiveSessionId
+          }, setLogError);
+        }
+
+        const stream = useReplay
+          ? replayFromSseJsonl(replayFile, {pacing: replayPacing})
+          : runResearchStream(prepared.message, {
+              apiUrl: resolvedApiUrl,
+              sessionId: effectiveSessionId,
+              ticker: prepared.ticker ?? ticker
+            });
+
+        for await (const chunk of stream) {
           if (cancelled) return;
           bufferRef.current += chunk;
           bytesRef.current += chunk.length;
@@ -189,13 +280,15 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
           const parsed = parseSseEvents(sseBufferRef.current + chunk);
           sseBufferRef.current = parsed.remainder;
 
-          for (const event of parsed.events) {
-            logSseRecord(currentLogFile, {
-              type: 'sse_event',
-              runNumber,
-              query: submittedQuery,
-              event
-            }, setLogError);
+          if (writingLog) {
+            for (const event of parsed.events) {
+              logSseRecord(currentLogFile, {
+                type: 'sse_event',
+                runNumber,
+                query: userPrompt,
+                event
+              }, setLogError);
+            }
           }
 
           if (debugEvents && parsed.events.length > 0) {
@@ -213,43 +306,51 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
         }
 
         if (cancelled) return;
-        setFinalOutput(extractFinalResponse(bufferRef.current));
-        logSseRecord(currentLogFile, {
-          type: 'run_end',
-          runNumber,
-          query: submittedQuery,
-          status: 'done'
-        }, setLogError);
+        const assistant = extractFinalResponse(bufferRef.current);
+        setChatTurns(prev => [...prev, {user: userPrompt, assistant}]);
+        if (useReplay) {
+          replayConsumedRef.current = true;
+        }
+        if (writingLog) {
+          logSseRecord(currentLogFile, {
+            type: 'run_end',
+            runNumber,
+            query: userPrompt,
+            status: 'done'
+          }, setLogError);
+        }
         setStatus('done');
 
-        fetchSessionCost(effectiveSessionId, {apiUrl: resolvedApiUrl})
-          .then(summary => {
-            if (cancelled) return;
-            setCostSummary(summary);
-            logSseRecord(currentLogFile, {
-              type: 'session_cost',
-              runNumber,
-              sessionId: effectiveSessionId,
-              summary
-            }, setLogError);
-          })
-          .catch(() => {});
-
-        if (query) {
-          setTimeout(() => exit(), 50);
+        if (!useReplay) {
+          fetchSessionCost(effectiveSessionId, {apiUrl: resolvedApiUrl})
+            .then(summary => {
+              if (cancelled) return;
+              setCostSummary(summary);
+              if (writingLog) {
+                logSseRecord(currentLogFile, {
+                  type: 'session_cost',
+                  runNumber,
+                  sessionId: effectiveSessionId,
+                  summary
+                }, setLogError);
+              }
+            })
+            .catch(() => {});
         }
       } catch (caught) {
         if (cancelled) return;
-        logSseRecord(currentLogFile, {
-          type: 'run_end',
-          runNumber,
-          query: submittedQuery,
-          status: 'error',
-          error: caught instanceof Error ? caught.message : String(caught)
-        }, setLogError);
+        if (writingLog) {
+          logSseRecord(currentLogFile, {
+            type: 'run_end',
+            runNumber,
+            query: userPrompt,
+            status: 'error',
+            error: caught instanceof Error ? caught.message : String(caught)
+          }, setLogError);
+        }
         setError(caught instanceof Error ? caught : new Error(String(caught)));
         setStatus('error');
-        if (query) {
+        if (!interactive) {
           setTimeout(() => exit(caught), 50);
         }
       }
@@ -260,7 +361,18 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
     return () => {
       cancelled = true;
     };
-  }, [configuredLogFile, effectiveSessionId, exit, query, resolvedApiUrl, submittedQuery, ticker]);
+  }, [
+    configuredLogFile,
+    effectiveSessionId,
+    exit,
+    interactive,
+    replayFile,
+    replayPacing,
+    resolvedApiUrl,
+    submittedQuery,
+    ticker,
+    runNonce
+  ]);
 
   const spinner = SPINNER_FRAMES[tick % SPINNER_FRAMES.length];
   const seconds = (elapsed / 10).toFixed(1);
@@ -273,6 +385,7 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
         statusLabel={statusLabel}
         statusColor={statusColor}
         logFile={logFileLabel}
+        replayMode={Boolean(replayFile)}
       />
 
       <Box marginTop={1} flexDirection="column">
@@ -287,11 +400,15 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
             seconds={seconds}
             bytes={bytes}
             statusColor={statusColor}
-            finalOutput={finalOutput}
+            chatTurns={chatTurns}
+            chatScroll={chatScroll}
             intermediateSteps={intermediateSteps}
             eventConsole={eventConsole}
             debugEvents={debugEvents}
             costSummary={costSummary}
+            onSnapshotFinished={handleSnapshotFinished}
+            interactive={interactive}
+            draft={draft}
           />
         )}
       </Box>
@@ -312,7 +429,7 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
         </Box>
       )}
 
-      {!query && (
+      {interactive && !submittedQuery && (
         <Box marginTop={1}>
           <PromptComposer draft={draft} disabled={isBusy} />
         </Box>
@@ -321,13 +438,18 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
   );
 }
 
-function Header({apiUrl, sessionId, statusLabel, statusColor, logFile}) {
+const brandGradient = ['#22d3ee', '#818cf8', '#e879f9'];
+const taglineGradient = gradient(['#64748b', '#94a3b8']);
+
+function Header({apiUrl, sessionId, statusLabel, statusColor, logFile, replayMode}) {
   return (
     <Box flexDirection="column">
       <Box justifyContent="space-between">
         <Text>
-          <Text color="cyan" bold>◆ research-agent</Text>
-          <Text color="gray"> · terminal workbench</Text>
+          <Text bold>
+            <Gradient colors={brandGradient}>◆ research-agent</Gradient>
+          </Text>
+          <Text>{taglineGradient(' · bloomberg-style blotter')}</Text>
         </Text>
         <Text>
           <Text color={statusColor}>●</Text>
@@ -339,7 +461,11 @@ function Header({apiUrl, sessionId, statusLabel, statusColor, logFile}) {
         {sessionId && <Text color="gray">  ·  session {sessionId}</Text>}
       </Box>
       <Box>
-        <Text color="gray">  sse log {logFile}</Text>
+        <Text color="gray">
+          {'  '}
+          {replayMode ? 'replay source ' : 'sse log '}
+          {logFile}
+        </Text>
       </Box>
     </Box>
   );
@@ -348,7 +474,9 @@ function Header({apiUrl, sessionId, statusLabel, statusColor, logFile}) {
 function EmptyState() {
   return (
     <Box flexDirection="column">
-      <Text bold>Ask for a research pass.</Text>
+      <Text bold>
+        <Gradient colors={['#38bdf8', '#c084fc']}>Ask for a research pass.</Gradient>
+      </Text>
       <Text color="gray">
         Paste a task, compare options, or scope a focused investigation.
       </Text>
@@ -364,16 +492,22 @@ function QueryCard({
   seconds,
   bytes,
   statusColor,
-  finalOutput,
+  chatTurns,
+  chatScroll,
   intermediateSteps,
   eventConsole,
   debugEvents,
-  costSummary
+  costSummary,
+  onSnapshotFinished,
+  interactive,
+  draft
 }) {
   return (
     <Box flexDirection="column">
-      <Box>
-        <Text color="cyan" bold>❯ </Text>
+      <Box flexDirection="row">
+        <Text bold>
+          <Gradient colors={['#22d3ee', '#a5b4fc']}>❯ </Gradient>
+        </Text>
         <Text>{query}</Text>
       </Box>
 
@@ -402,7 +536,9 @@ function QueryCard({
 
       {intermediateSteps.length > 0 && (
         <Box marginTop={1} flexDirection="column">
-          <Text color="yellow" bold>intermediate steps</Text>
+          <Text bold>
+            <Gradient colors={['#fbbf24', '#f97316']}>intermediate steps</Gradient>
+          </Text>
           <Box borderStyle="round" borderColor="yellow" paddingX={1} flexDirection="column">
             {intermediateSteps.map(step => (
               <Text key={step.id}>
@@ -417,7 +553,9 @@ function QueryCard({
 
       {debugEvents && (
         <Box marginTop={1} flexDirection="column">
-          <Text color="cyan" bold>sse event console</Text>
+          <Text bold>
+            <Gradient colors={['#22d3ee', '#06b6d4']}>sse event console</Gradient>
+          </Text>
           <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="column">
             {eventConsole.length > 0 ? (
               eventConsole.map(item => (
@@ -433,49 +571,19 @@ function QueryCard({
         </Box>
       )}
 
-      {status === 'done' && finalOutput && (
+      {query && (isBusy || chatTurns.length > 0) && (
         <Box marginTop={1} flexDirection="column">
-          <Text color="magenta" bold>agent</Text>
-          <Box
-            borderStyle="round"
-            borderColor="gray"
-            paddingX={1}
-            flexDirection="column"
-          >
-            <Text>{finalOutput}</Text>
-          </Box>
+          <BloombergWorkbench
+            assistantMarkdown={chatTurns.map(t => t.assistant).join('\n\n')}
+            chatTurns={chatTurns}
+            chatScroll={chatScroll}
+            isBusy={isBusy}
+            interactive={interactive}
+            draft={draft}
+            onSnapshotFinished={onSnapshotFinished}
+          />
         </Box>
       )}
-    </Box>
-  );
-}
-
-function PromptComposer({draft, disabled}) {
-  const borderColor = disabled ? 'yellow' : 'cyan';
-  return (
-    <Box
-      borderStyle="round"
-      borderColor={borderColor}
-      paddingX={1}
-      flexDirection="column"
-    >
-      <Box>
-        <Text color={borderColor}>{disabled ? '…' : '❯'}</Text>
-        <Text> </Text>
-        {disabled ? (
-          <Text color="gray">waiting for the agent…</Text>
-        ) : draft ? (
-          <Text>
-            {draft}
-            <Text color="cyan">▎</Text>
-          </Text>
-        ) : (
-          <Text color="gray">Type a query and press Return</Text>
-        )}
-      </Box>
-      <Box justifyContent="space-between">
-        <Text color="gray" dimColor>Return sends · Ctrl+L clears · Ctrl+C exits</Text>
-      </Box>
     </Box>
   );
 }

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "tsx src/index.jsx",
+    "demo": "tsx src/index.jsx --replay ../../research-agent-sse-events.jsonl",
     "build": "esbuild src/index.jsx --bundle --platform=node --format=esm --packages=external --banner:js='#!/usr/bin/env node' --outfile=dist/index.js",
     "start": "node dist/index.js",
     "test": "node --test src/*.test.js",
@@ -15,7 +16,9 @@
     "format": "prettier --write src"
   },
   "dependencies": {
+    "gradient-string": "^3.0.0",
     "ink": "^7.0.1",
+    "ink-gradient": "^4.0.0",
     "meow": "^14.1.0",
     "react": "^19.2.5"
   },

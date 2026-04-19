@@ -23,10 +23,13 @@ export default [
         fetch: 'readonly',
         process: 'readonly',
         setTimeout: 'readonly',
+        clearTimeout: 'readonly',
         setInterval: 'readonly',
         clearInterval: 'readonly',
         TextDecoder: 'readonly',
-        URLSearchParams: 'readonly'
+        URLSearchParams: 'readonly',
+        URL: 'readonly',
+        AbortSignal: 'readonly'
       }
     },
     settings: {
