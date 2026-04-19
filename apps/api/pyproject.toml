@@ -11,6 +11,7 @@ dependencies = [
   "agno",
   "ddgs",
   "fastapi[standard]",
+  "kiteconnect",
   "openai",
   "pandas",
   "pydantic-settings",

@@ -5,6 +5,8 @@ from agno.team import Team, TeamMode
 from research_agent.prompts import (
     COMPANY_FINANCIAL_RESEARCH_INSTRUCTIONS,
     COMPANY_FINANCIAL_RESEARCH_ROLE,
+    EXECUTION_INSTRUCTIONS,
+    EXECUTION_ROLE,
     FUNDAMENTAL_ANALYSIS_INSTRUCTIONS,
     FUNDAMENTAL_ANALYSIS_ROLE,
     MACRO_ECONOMIC_INSTRUCTIONS,
@@ -17,6 +19,7 @@ from research_agent.prompts import (
 )
 from research_agent.settings import get_settings
 from research_agent.tools import (
+    execution_tools,
     fundamental_tools,
     macro_tools,
     market_research_tools,
@@ -95,6 +98,19 @@ def build_fundamental_analysis_agent() -> Agent:
     )
 
 
+def build_execution_agent() -> Agent:
+    return Agent(
+        id="execution-agent",
+        name="Execution Agent",
+        role=EXECUTION_ROLE,
+        model=_model(),
+        tools=execution_tools(),
+        instructions=EXECUTION_INSTRUCTIONS,
+        markdown=True,
+        add_datetime_to_context=True,
+    )
+
+
 def build_financial_research_agents() -> list[Agent]:
     return [
         build_company_financial_research_agent(),
@@ -102,6 +118,7 @@ def build_financial_research_agents() -> list[Agent]:
         build_term_sheet_agent(),
         build_technical_analysis_agent(),
         build_fundamental_analysis_agent(),
+        build_execution_agent(),
     ]
 
 
