@@ -1,12 +1,9 @@
 from fastapi.testclient import TestClient
 
-from research_agent.agents import (
-    _financial_dataset_tools,
-    build_financial_research_agents,
-    build_financial_research_team,
-)
+from research_agent.agents import build_financial_research_agents, build_financial_research_team
 from research_agent.main import app
 from research_agent.settings import get_settings
+from research_agent.tools import _financial_dataset_tools
 
 
 def test_health() -> None:
