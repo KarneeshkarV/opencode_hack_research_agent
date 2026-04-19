@@ -156,6 +156,21 @@ def technical_tools() -> list:
     ]
 
 
+def risk_tools() -> list:
+    return [
+        TimeoutYFinanceTools(
+            enable_stock_price=True,
+            enable_historical_prices=True,
+            enable_technical_indicators=True,
+            enable_stock_fundamentals=True,
+        ),
+        get_technical_summary,
+        web_tools(),
+        CalculatorTools(),
+        *_financial_dataset_tools(),
+    ]
+
+
 def macro_tools() -> list:
     return [
         web_tools(),
