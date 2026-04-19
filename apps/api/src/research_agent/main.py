@@ -2,6 +2,7 @@ from research_agent.telemetry import instrument_fastapi, setup_telemetry
 
 setup_telemetry()
 
+import json  # noqa: E402
 import logging  # noqa: E402
 import re  # noqa: E402
 from collections.abc import AsyncIterator  # noqa: E402
@@ -17,6 +18,7 @@ from fastapi.responses import StreamingResponse  # noqa: E402
 from research_agent import memory  # noqa: E402
 from research_agent.agents import financial_research_agents, financial_research_team  # noqa: E402
 from research_agent.settings import get_settings  # noqa: E402
+from research_agent.tools.financial import TimeoutYFinanceTools  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -90,16 +92,25 @@ def _persist_run(
     logger.info("Persisted research run for %s at %s", ticker, run_dir)
 
 
-def _extract_sector_industry(member_outputs: list[dict[str, Any]]) -> tuple[str, str]:
-    """Best-effort sector/industry extraction from the company-research agent output."""
+def _extract_sector_industry(
+    member_outputs: list[dict[str, Any]], ticker: str | None = None
+) -> tuple[str, str]:
+    """Resolve sector/industry for memory metadata.
+
+    Prefer deterministic company-info data so memory metadata does not depend on
+    whether a specialist included exact `Sector:` / `Industry:` lines in markdown.
+    Agent markdown remains a fallback for any missing field.
+    """
+    fetched_sector, fetched_industry = _fetch_sector_industry(ticker) if ticker else ("", "")
+    agent_sector, agent_industry = "", ""
     for member in member_outputs:
         if member.get("agent_id") != "company-financial-research-agent":
             continue
         text = member.get("content") or ""
-        sector = _grep_field(text, "sector")
-        industry = _grep_field(text, "industry")
-        return sector, industry
-    return "", ""
+        agent_sector = _grep_field(text, "sector")
+        agent_industry = _grep_field(text, "industry")
+        break
+    return fetched_sector or agent_sector, fetched_industry or agent_industry
 
 
 def _grep_field(text: str, label: str) -> str:
@@ -107,6 +118,40 @@ def _grep_field(text: str, label: str) -> str:
     if not match:
         return ""
     return re.sub(r"[*_`]", "", match.group(1)).strip()
+
+
+def _fetch_sector_industry(ticker: str) -> tuple[str, str]:
+    """Fallback to deterministic company-info data when agent markdown omits metadata."""
+    try:
+        raw = TimeoutYFinanceTools(enable_company_info=True).get_company_info(ticker)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not fetch sector/industry for %s: %s", ticker, exc)
+        return "", ""
+    return _parse_sector_industry(raw)
+
+
+def _parse_sector_industry(text: str) -> tuple[str, str]:
+    if not text:
+        return "", ""
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        data = None
+    if isinstance(data, dict):
+        sector = _clean_meta_value(data.get("Sector") or data.get("sector"))
+        industry = _clean_meta_value(data.get("Industry") or data.get("industry"))
+        if sector or industry:
+            return sector, industry
+    return _grep_field(text, "sector"), _grep_field(text, "industry")
+
+
+def _clean_meta_value(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text or text.upper() == "N/A":
+        return ""
+    return text
 
 
 async def _run_and_capture(
@@ -159,7 +204,7 @@ async def _run_and_capture(
         logger.info("No ticker resolved for query %r — skipping persistence", message)
         return
 
-    sector, industry = _extract_sector_industry(member_outputs)
+    sector, industry = _extract_sector_industry(member_outputs, resolved)
     _persist_run(
         ticker=resolved,
         query=message,

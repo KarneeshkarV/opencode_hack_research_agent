@@ -40,7 +40,8 @@ COMPANY_FINANCIAL_RESEARCH_INSTRUCTIONS = [
     "say so explicitly instead of guessing.",
 
     # Output contract
-    "OUTPUT: Structure your reply as — **Snapshot** (ticker, price, as-of date), "
+    "OUTPUT: Structure your reply as — **Snapshot** (ticker, company, price, as-of "
+    "date, and explicit `Sector:` and `Industry:` lines from get_company_info), "
     "**Business** (model, segments, customers, competitors), **Recent catalysts** "
     "(dated bullets from news), **Analysis** (your read), **Open questions**. "
     "Keep it tight; no filler.",

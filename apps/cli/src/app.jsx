@@ -5,6 +5,7 @@ import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Box, Text, useApp, useInput} from 'ink';
 
 import {runResearchStream} from './api/client.js';
+import {prepareResearchMessage} from './ticker-context.js';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -149,18 +150,33 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
 
       try {
         setStatus('running');
+        const prepared = await prepareResearchMessage(submittedQuery, {
+          explicitTicker: ticker
+        });
+
+        if (cancelled) return;
+
         logSseRecord(currentLogFile, {
           type: 'run_start',
           runNumber,
           query: submittedQuery,
+          resolvedTicker: prepared.ticker,
+          resolvedTickers: prepared.resolution?.tickers ?? [],
+          tickerResolutionSource: prepared.resolution?.source ?? null,
+          sector: prepared.sector || null,
+          memoryPeers: prepared.memoryPeers.map(peer => ({
+            ticker: peer.ticker,
+            runId: peer.runId,
+            sector: peer.sector
+          })),
           apiUrl: resolvedApiUrl,
           sessionId: sessionId ?? null
         }, setLogError);
 
-        for await (const chunk of runResearchStream(submittedQuery, {
+        for await (const chunk of runResearchStream(prepared.message, {
           apiUrl: resolvedApiUrl,
           sessionId,
-          ticker
+          ticker: prepared.ticker ?? ticker
         })) {
           if (cancelled) return;
           bufferRef.current += chunk;
@@ -226,7 +242,7 @@ export function App({query, apiUrl, sessionId, logFile, ticker, debugEvents = fa
     return () => {
       cancelled = true;
     };
-  }, [configuredLogFile, exit, query, resolvedApiUrl, sessionId, submittedQuery]);
+  }, [configuredLogFile, exit, query, resolvedApiUrl, sessionId, submittedQuery, ticker]);
 
   const spinner = SPINNER_FRAMES[tick % SPINNER_FRAMES.length];
   const seconds = (elapsed / 10).toFixed(1);
