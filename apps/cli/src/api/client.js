@@ -7,12 +7,14 @@ export async function* runResearchStream(
   const body = new URLSearchParams();
   body.set('message', message);
   body.set('stream', 'true');
+  body.set('stream_events', 'true');
+  body.set('stream_member_events', 'true');
 
   if (sessionId) {
     body.set('session_id', sessionId);
   }
 
-  const response = await fetch(`${apiUrl}/agents/research-agent/runs`, {
+  const response = await fetch(`${apiUrl}/teams/financial-research-team/runs`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded'

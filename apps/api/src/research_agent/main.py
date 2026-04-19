@@ -1,7 +1,7 @@
 from agno.os import AgentOS
 from fastapi import FastAPI
 
-from research_agent.agents import research_agent
+from research_agent.agents import financial_research_agents, financial_research_team
 from research_agent.settings import get_settings
 
 settings = get_settings()
@@ -16,7 +16,8 @@ async def health() -> dict[str, str]:
 
 agent_os = AgentOS(
     name=settings.app_name,
-    agents=[research_agent],
+    agents=financial_research_agents,
+    teams=[financial_research_team],
     base_app=base_app,
     tracing=True,
 )
