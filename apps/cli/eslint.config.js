@@ -17,7 +17,9 @@ export default [
         }
       },
       globals: {
+        AbortController: 'readonly',
         console: 'readonly',
+        clearTimeout: 'readonly',
         fetch: 'readonly',
         process: 'readonly',
         setTimeout: 'readonly',

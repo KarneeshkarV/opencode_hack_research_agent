@@ -63,13 +63,13 @@ tmp/logs/api-<timestamp>-<pid>.log
 
 The latest API run is also available at `tmp/logs/api.latest.log`.
 
-Each CLI research run writes parsed SSE events to a separate JSONL file:
+Each CLI session writes parsed SSE events to a single JSONL file, with multiple runs appended to the same file:
 
 ```txt
-tmp/logs/research-agent-sse-events-<timestamp>-<pid>-<run>.jsonl
+tmp/logs/research-agent-sse-events-<session>.jsonl
 ```
 
-The latest CLI run log is also available at `tmp/logs/research-agent-sse-events.latest.jsonl`.
+The latest CLI session log is also available at `tmp/logs/research-agent-sse-events.latest.jsonl`.
 
 ## Commands
 
@@ -88,5 +88,7 @@ RESEARCH_AGENT_API_URL=http://localhost:7777
 AGENT_OS_HOST=localhost
 AGENT_OS_PORT=7777
 AGNO_MODEL_ID=gpt-5.2
+EXTERNAL_TOOL_TIMEOUT_SECONDS=25
+RESEARCH_AGENT_STREAM_IDLE_TIMEOUT_MS=90000
 OPENAI_API_KEY=
 ```
