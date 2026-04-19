@@ -25,6 +25,12 @@ api:
 api-test:
     cd apps/api && uv run pytest
 
+eval:
+    cd apps/api && uv run python scripts/run_evals.py
+
+eval-one id:
+    cd apps/api && uv run python scripts/run_evals.py --case {{id}}
+
 cli-build:
     bun --filter @research-agent/cli build
 
