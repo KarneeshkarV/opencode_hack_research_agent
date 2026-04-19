@@ -1,8 +1,12 @@
-from agno.os import AgentOS
-from fastapi import FastAPI
+from research_agent.telemetry import instrument_fastapi, setup_telemetry
 
-from research_agent.agents import financial_research_agents, financial_research_team
-from research_agent.settings import get_settings
+setup_telemetry()
+
+from agno.os import AgentOS  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
+
+from research_agent.agents import financial_research_agents, financial_research_team  # noqa: E402
+from research_agent.settings import get_settings  # noqa: E402
 
 settings = get_settings()
 
@@ -24,6 +28,7 @@ agent_os = AgentOS(
 )
 
 app = agent_os.get_app()
+instrument_fastapi(app)
 
 
 def main() -> None:

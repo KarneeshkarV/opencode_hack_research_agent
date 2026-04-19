@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     external_tool_timeout_seconds: int = 25
 
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    langfuse_host: str = Field(
+        default="https://us.cloud.langfuse.com",
+        validation_alias=AliasChoices("LANGFUSE_HOST", "LANGFUSE_BASE_URL"),
+    )
+    langfuse_enabled: bool = True
+    service_name: str = "research-agent-api"
+    service_version: str = "0.1.0"
+    environment: str = "dev"
+
 
 @lru_cache
 def get_settings() -> Settings:
