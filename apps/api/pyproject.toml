@@ -9,10 +9,13 @@ description = "Agno/FastAPI backend for the OpenCode hack research agent"
 requires-python = ">=3.11"
 dependencies = [
   "agno",
+  "ddgs",
   "fastapi[standard]",
   "openai",
+  "pandas",
   "pydantic-settings",
   "uvicorn[standard]",
+  "yfinance",
 ]
 
 [dependency-groups]

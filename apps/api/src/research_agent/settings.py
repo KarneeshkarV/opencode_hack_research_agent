@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     app_name: str = "OpenCode Hack Research Agent"
     model_id: str = "gpt-5.2"
+    financial_datasets_api_key: str | None = None
 
 
 @lru_cache
