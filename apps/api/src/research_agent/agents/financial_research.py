@@ -30,7 +30,7 @@ from research_agent.tools import (
 
 def _model() -> OpenAIResponses:
     settings = get_settings()
-    return OpenAIResponses(id=settings.model_id)
+    return OpenAIResponses(id=settings.model_id, api_key=settings.openai_api_key or None)
 
 
 def build_company_financial_research_agent() -> Agent:

@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
@@ -15,12 +16,18 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "OpenCode Hack Research Agent"
-    model_id: str = "gpt-5.2"
+    model_id: str = Field(
+        default="gpt-5.2",
+        validation_alias=AliasChoices("MODEL_ID", "AGNO_MODEL_ID"),
+    )
     financial_datasets_api_key: str | None = None
     kite_api_key: str | None = None
     kite_api_secret: str | None = None
     kite_access_token: str | None = None
     kite_dry_run: bool = True
+    exa_api_key: str | None = None
+    openai_api_key: str | None = None
+    external_tool_timeout_seconds: int = 25
 
 
 @lru_cache
